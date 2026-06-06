@@ -1,0 +1,97 @@
+{{define "admin_dashboard"}}{{template "header" .}}
+<h1>Админка</h1>
+<div class="grid">
+  <a class="card" href="/admin/users">users: {{.UsersCount}}</a>
+  <a class="card" href="/admin/events">events: {{.EventsCount}}</a>
+  <a class="card" href="/admin/reviews">reviews: {{.ReviewsCount}}</a>
+  <a class="card" href="/admin/roles">roles: {{.RolesCount}}</a>
+</div>
+{{template "footer" .}}{{end}}
+
+{{define "admin_users"}}{{template "header" .}}
+<h1>users</h1>
+<div class="admin-toolbar"><a class="btn btn-secondary" href="/admin">← назад</a><a class="btn btn-primary" href="/admin/users/new">создать пользователя</a></div>
+<div class="grid">
+{{range .Users}}
+<article class="card"><p><b>{{.FullName}}</b> (@{{.Username}})</p><p>{{.Role}} | active: {{.IsActive}}</p><div class="action-row"><form method="post" action="/admin/users/{{.ID}}/disable" class="inline-form"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button class="btn btn-secondary">вкл/выкл</button></form><form method="post" action="/admin/users/{{.ID}}/delete" class="inline-form"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button class="btn btn-secondary">удалить</button></form></div></article>
+{{end}}
+</div>
+{{template "footer" .}}{{end}}
+
+{{define "admin_user_form"}}{{template "header" .}}
+<h1>создать пользователя</h1>
+<p><a class="btn btn-secondary" href="/admin/users">← назад</a></p>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+<form method="post" action="/admin/users/new" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <input name="username" placeholder="username">
+  <input name="first_name" placeholder="имя">
+  <input name="last_name" placeholder="фамилия">
+  <input name="telegram" placeholder="telegram (например @username)">
+  <input type="password" name="password" placeholder="password">
+  <select name="role"><option value="junior_volunteer">Junior волонтёр</option><option value="middle_volunteer">Middle волонтёр</option><option value="senior_volunteer">Senior волонтёр</option><option value="organizer">Организатор</option><option value="leader">Лидер</option></select>
+  <input type="file" name="avatar_file" accept="image/*">
+  <button class="btn btn-primary">создать</button>
+</form>
+{{template "footer" .}}{{end}}
+
+{{define "admin_events"}}{{template "header" .}}
+<h1>events</h1>
+<div class="admin-toolbar"><a class="btn btn-secondary" href="/admin">← назад</a><a class="btn btn-primary" href="/admin/events/new">создать ивент</a></div>
+<div class="grid">
+{{range .Events}}
+<article class="card"><p><b>{{.Title}}</b></p><p>{{.Status}} | даты: {{fmtDate .StartDate "02.01.2006"}} — {{fmtDate .EndDate "02.01.2006"}}</p><p>SP за участие: {{.SPPoints}}</p><div class="action-row"><a class="btn btn-secondary" href="/admin/events/{{.ID}}/edit">редактировать</a><form method="post" action="/admin/events/{{.ID}}/delete" class="inline-form"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button class="btn btn-secondary">удалить</button></form><form method="post" action="/admin/events/{{.ID}}/finish" class="inline-form"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button class="btn btn-primary">завершить ивент</button></form></div></article>
+{{end}}
+</div>
+{{template "footer" .}}{{end}}
+
+{{define "admin_event_form"}}{{template "header" .}}{{template "event_form_inner" .}}{{template "footer" .}}{{end}}
+{{define "admin_event_edit"}}{{template "header" .}}{{template "event_form_inner" .}}{{template "footer" .}}{{end}}
+
+{{define "event_form_inner"}}
+<h1>{{if .Event.ID}}редактировать ивент{{else}}создать ивент{{end}}</h1>
+<p><a class="btn btn-secondary" href="/admin/events">← назад</a></p>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+<form method="post" action="{{if .Event.ID}}/admin/events/{{.Event.ID}}/edit{{else}}/admin/events/new{{end}}" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <input name="title" placeholder="название ивента" value="{{.Event.Title}}">
+  <input name="short_description" placeholder="краткое описание" value="{{.Event.ShortDescription}}">
+  <textarea name="full_description" placeholder="полное описание">{{.Event.FullDescription}}</textarea>
+  <label>Локация</label><select name="location"><option value="Campus" {{if eq .Event.Location "Campus"}}selected{{end}}>Campus</option><option value="TestPays" {{if eq .Event.Location "TestPays"}}selected{{end}}>TestPays</option></select>
+  <div class="form-row-2"><div><label>Начало мероприятия</label><input type="date" name="start_date" value="{{fmtDate .Event.StartDate "2006-01-02"}}"></div><div><label>Завершение мероприятия</label><input type="date" name="end_date" value="{{fmtDate .Event.EndDate "2006-01-02"}}"></div></div>
+  <div id="registration-deadline-wrap"><label>Конец регистрации волонтёров</label><input type="date" name="registration_deadline" value="{{fmtDatePtr .Event.RegistrationDeadline "2006-01-02"}}"></div>
+  <label class="inline-check"><input type="checkbox" id="registration-until-start-create" name="registration_until_start"> Регистрация вплоть до начала мероприятия</label>
+  <div class="form-row-2"><div><label>Максимум участников</label><input type="number" min="1" name="max_participants" value="{{intPtr .Event.MaxParticipants}}"></div><div><label>Резерв волонтёров</label><input type="number" min="0" name="reserve_participants" value="{{.Event.ReserveParticipants}}"></div></div>
+  <div class="form-row-2"><div><label>Начислить SP</label><input type="number" min="0" name="sp_points" value="{{.Event.SPPoints}}"></div></div>
+  <label class="inline-check event-no-roles-toggle"><input type="checkbox" name="no_roles" value="on" data-no-roles-toggle> Нет ролей</label>
+  <section class="card event-roles-builder" data-event-roles-builder>
+    <div class="event-roles-header"><div><h3>Роли участников</h3><p class="text-muted">Добавьте роли, на которые смогут откликаться волонтёры.</p></div><button type="button" class="btn btn-secondary" data-add-event-role>+ Добавить роль</button></div>
+    <div class="event-roles-list" data-event-roles-list>
+      {{range .EventRoles}}
+      <div class="event-role-row"><input name="role_titles" placeholder="Название роли" value="{{.Title}}"><input name="role_capacities" type="number" min="1" placeholder="Кол-во людей" value="{{intPtr .Capacity}}"><textarea name="role_descriptions" placeholder="Кратко опишите, что будет делать волонтёр">{{.Description}}</textarea><button type="button" class="btn btn-secondary" data-remove-event-role>Удалить</button></div>
+      {{else}}
+      <div class="event-role-row"><input name="role_titles" placeholder="Название роли"><input name="role_capacities" type="number" min="1" placeholder="Кол-во людей"><textarea name="role_descriptions" placeholder="Кратко опишите, что будет делать волонтёр"></textarea><button type="button" class="btn btn-secondary" data-remove-event-role>Удалить</button></div>
+      {{end}}
+    </div>
+  </section>
+  <label>Фото мероприятия</label><input type="hidden" name="event_cropped_data" id="event-cropped-data"><input class="file-input" type="file" name="event_image_file" accept="image/*" data-crop-kind="event" data-crop-hidden="#event-cropped-data" data-crop-preview="#event-image-preview"><img id="event-image-preview" class="upload-preview" src="{{fallback .Event.CoverImageURL "/static/img/placeholder.svg"}}" alt="preview">
+  <label>Волонтёры мероприятия</label>
+  <div class="multi-select" data-multi-select><button type="button" class="multi-select-toggle btn btn-secondary" data-multi-select-toggle>Выбрать волонтёров</button><div class="multi-select-panel" data-multi-select-panel><input type="search" class="multi-select-search" data-multi-select-search placeholder="Поиск волонтёра...">{{range .Volunteers}}<label class="multi-select-option"><input type="checkbox" name="participant_ids" value="{{.ID}}" data-multi-select-input {{if hasID $.SelectedParticipants .ID}}checked{{end}}><span>{{.FullName}} (@{{.Username}})</span><span class="pick-mark">✓</span></label>{{end}}</div></div>
+  <label>Организаторы мероприятия</label>
+  <div class="multi-select" data-multi-select><button type="button" class="multi-select-toggle btn btn-secondary" data-multi-select-toggle>Выбрать организаторов</button><div class="multi-select-panel" data-multi-select-panel><input type="search" class="multi-select-search" data-multi-select-search placeholder="Поиск организатора...">{{range .Organizers}}<label class="multi-select-option"><input type="checkbox" name="organizer_ids" value="{{.ID}}" data-multi-select-input {{if hasID $.SelectedOrganizers .ID}}checked{{end}}><span>{{.FullName}} (@{{.Username}}) — {{.Role}}</span><span class="pick-mark">✓</span></label>{{end}}</div></div>
+  <button class="btn btn-primary">{{if .Event.ID}}сохранить ивент{{else}}создать ивент{{end}}</button>
+</form>
+<script>document.getElementById('registration-until-start-create')?.addEventListener('change',(e)=>{const wrap=document.getElementById('registration-deadline-wrap');const reg=document.querySelector('input[name="registration_deadline"]');const start=document.querySelector('input[name="start_date"]');if(e.target.checked){wrap.style.display='none';reg.value=start.value;}else{wrap.style.display='block';reg.value='';}});</script>
+{{end}}
+
+{{define "admin_reviews"}}{{template "header" .}}
+<h1>Отзывы по ивентам</h1><p><a class="btn btn-secondary" href="/admin">← назад</a></p><div class="card reviews-shell"><ul class="admin-plain-list reviews-event-list">{{range .Rows}}<li><a class="reviews-event-link" href="/admin/reviews/{{.EventID}}">{{.Title}}</a> <span class="badge">{{.ReviewsCount}} отзывов</span></li>{{else}}<li class="text-muted">Пока нет ивентов</li>{{end}}</ul></div>
+{{template "footer" .}}{{end}}
+
+{{define "admin_reviews_event"}}{{template "header" .}}
+<h1>Отзывы: {{.Event.Title}}</h1><p><a class="btn btn-secondary" href="/admin/reviews">Вернуться к списку ивентов</a></p><div class="card reviews-shell"><ul class="admin-plain-list reviews-scroll-list">{{range .Reviews}}<li class="review-row"><div class="review-row-head"><b>@{{.Username}}</b> <span class="text-muted">{{.FullName}}</span><span class="badge">{{.Rating}}/10</span></div>{{if .Comment}}<div class="text-muted">{{.Comment}}</div>{{else}}<div class="text-muted">без комментария</div>{{end}}</li>{{else}}<li class="text-muted">По этому ивенту пока нет отзывов</li>{{end}}</ul></div>
+{{template "footer" .}}{{end}}
+
+{{define "admin_roles"}}{{template "header" .}}
+<h1>настройки ролей</h1><p><a class="btn btn-secondary" href="/admin">← назад</a></p><p>здесь роли как права доступа. пользователи — отдельно в разделе users.</p><div class="grid">{{range .Cards}}<article class="card"><h3>{{.Name}}</h3><p><b>может:</b></p><ul>{{range .Can}}<li>{{.}}</li>{{end}}</ul><p><b>ограничения:</b></p><ul>{{range .Restrictions}}<li>{{.}}</li>{{end}}</ul></article>{{end}}</div>
+{{template "footer" .}}{{end}}
