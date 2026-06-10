@@ -3,3 +3,4 @@ volunteer_platform.json
 volunteer_platform.db
 *.db
 /bin/
+.idea
