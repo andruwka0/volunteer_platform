@@ -6,14 +6,11 @@ import (
 )
 
 var (
-	ErrUserExists        = errors.New("пользователь уже существует")
-	ErrUserNotFound      = errors.New("пользователь не найден")
-	ErrInvalidPassword   = errors.New("неверный пароль")
-	ErrOrderExists       = errors.New("заказ уже загружен другим пользователем")
-	ErrOrderOwnedByUser  = errors.New("заказ уже загружен этим пользователем")
-	ErrInsufficientFunds = errors.New("недостаточно баллов")
-	ErrInvalidOrder      = errors.New("неверный номер заказа")
-	ErrInvalidRole       = errors.New("не соответсвующая роль")
+	ErrUserExists      = errors.New("пользователь уже существует")
+	ErrUserNotFound    = errors.New("пользователь не найден")
+	ErrInvalidPassword = errors.New("неверный пароль")
+	ErrInvalidRole     = errors.New("не соответсвующая роль")
+	ErrEventNotFound   = errors.New("мероприятие не найдено")
 )
 
 type User struct {

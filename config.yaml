@@ -1,6 +1,0 @@
-server_host: "localhost"
-server_port: 8000
-read_timeout: 5s
-write_timeout: 10s
-idle_timeout: 60s
-shutdown_timeout: 10s

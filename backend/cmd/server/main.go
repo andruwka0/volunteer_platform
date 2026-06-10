@@ -2,58 +2,88 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/andruwka0/volunteer_platform/internal/config"
+	"github.com/andruwka0/volunteer_platform/internal/domain"
+	"github.com/andruwka0/volunteer_platform/internal/handler"
+	"github.com/andruwka0/volunteer_platform/internal/router"
+	"github.com/andruwka0/volunteer_platform/internal/service"
+	"github.com/andruwka0/volunteer_platform/internal/store"
+	"github.com/andruwka0/volunteer_platform/internal/worker"
+	"github.com/joho/godotenv"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"volunteer-platform/backend/internal/config"
 )
 
-// Запуск сервера, парсинг конфига, плавное завершение сервера
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Println("Файл .env не найден, используются системные переменные окружения")
+	}
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("config load error: %v", err)
+		log.Fatalf("Не удалось загрузить конфиг: %v", err)
 	}
-	config.ServerConfig = cfg
-	address := cfg.ServerHost + ":" + itoa(cfg.ServerPort)
-	srv := &http.Server{
-		Addr:         address,
-		Handler:      nil,
+	str := store.New()
+
+	adminLogin := os.Getenv("ADMIN_LOGIN")
+	adminPass := os.Getenv("ADMIN_PASSWORD")
+
+	if adminLogin != "" && adminPass != "" {
+		_, err := str.CreateUser(adminLogin, service.HashPassword(adminPass), "Admin", "User", "")
+		if err == nil {
+			err := str.UpdateUserRole(1, domain.RoleAdmin)
+			if err != nil {
+				return
+			}
+			log.Println("Администратор инициализирован из ENV")
+		}
+	}
+	svc := service.New(str)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go worker.StartEventStatusChecker(ctx, str, cfg.WorkerInterval)
+
+	h := handler.New(svc)
+	r := router.New(h, str)
+
+	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	httpSrv := &http.Server{
+		Addr:         addr,
+		Handler:      r,
 		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
 		IdleTimeout:  cfg.IdleTimeout,
 	}
 
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
 	go func() {
-		log.Printf("Сервер активен: %s", srv.Addr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Printf("Сервер запущен на %s", addr)
+		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("Ошибка сервера: %v", err)
 		}
 	}()
 
-	// Реализация gracefull shutdown
-	quitChan := make(chan os.Signal, 1)
+	<-stop
+	log.Println("Получен сигнал остановки, начинаем graceful shutdown")
+	cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(
+		context.Background(),
+		cfg.ShutdownTimeout,
+	)
+	defer shutdownCancel()
 
-	signal.Notify(quitChan, syscall.SIGINT, syscall.SIGTERM)
-	<-quitChan
-
-	log.Println("Завершение работы сервера...")
-
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("Сервер завершил работу неожиданно: %v", err)
+	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Ошибка при graceful shutdown: %v", err)
+		if err := httpSrv.Close(); err != nil {
+			log.Printf("Ошибка при принудительном закрытии: %v", err)
+		}
 	}
+
 	log.Println("Сервер успешно остановлен")
-}
-
-func itoa(v int) string {
-	return fmtInt(v)
-}
-
-func fmtInt(v int) string {
-	return fmt.Sprintf("%d", v)
 }
