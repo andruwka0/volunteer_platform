@@ -1,5 +1,6 @@
 server_host: "localhost"
-server_port: 8080
-log_level: "info"
-accrual_interval_seconds: 3
-worker_concurrency: 5
+server_port: ":8000"
+read_timeout: 5s
+write_timeout: 10s
+idle_timeout: 60s
+shutdown_timeout: 10s
