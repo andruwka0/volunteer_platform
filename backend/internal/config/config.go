@@ -2,41 +2,47 @@ package config
 
 import (
 	"errors"
-	"fmt"
-	"gopkg.in/yaml.v3"
 	"os"
+	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
-// Config содержит параметры запуска сервера.
-// Изучите config.yaml и добавьте поля самостоятельно.
 type Config struct {
-	Host     string `yaml:"server_host"`
-	Port     int    `yaml:"server_port"`
-	Log      string `yaml:"log_level"`
-	Interval int    `yaml:"accrual_interval_seconds"`
-	Worker   int    `yaml:"worker_concurrency"`
+	ServerHost      string        `yaml:"server_host"`
+	ServerPort      int           `yaml:"server_host"`
+	ReadTimeout     time.Duration `yaml:"read_timeout"`
+	WriteTimeout    time.Duration `yaml:"write_timeout"`
+	IdleTimeout     time.Duration `yaml:"idle_timeout"`
+	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
 }
 
-// Load читает конфигурацию из файла config.yaml.
-// Если файл не найден или поле не задано, применяются значения по умолчанию.
-func Load() (*Config, error) {
-	cfg := &Config{
-		Host:     "localhost",
-		Port:     8080,
-		Log:      "info",
-		Interval: 3,
-		Worker:   5,
+func defaultConfig() *Config {
+	return &Config{
+		ServerHost:      "localhost",
+		ServerPort:      8000,
+		ReadTimeout:     5,
+		WriteTimeout:    10,
+		IdleTimeout:     60,
+		ShutdownTimeout: 10,
 	}
+}
+
+var ServerConfig *Config
+
+// Load читает config.yaml
+func Load() (*Config, error) {
+	cfg := defaultConfig()
 
 	data, err := os.ReadFile("config.yaml")
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return cfg, nil
 		}
-		return nil, fmt.Errorf("read config: %w", err)
+		return nil, err
 	}
 	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("parse config: %w", err)
+		return nil, err
 	}
 	return cfg, nil
 }
