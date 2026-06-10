@@ -13,6 +13,7 @@ var (
 	ErrOrderOwnedByUser  = errors.New("заказ уже загружен этим пользователем")
 	ErrInsufficientFunds = errors.New("недостаточно баллов")
 	ErrInvalidOrder      = errors.New("неверный номер заказа")
+	ErrInvalidRole       = errors.New("не соответсвующая роль")
 )
 
 type User struct {
@@ -44,15 +45,6 @@ type Event struct {
 	ReserveCount         int64
 }
 
-type Notification struct {
-	ID        int64
-	UserID    int64
-	Title     string
-	Message   string
-	IsRead    bool
-	CreatedAt time.Time
-}
-
 const (
 	RoleAdmin     = "Admin"
 	RoleVolunteer = "Volunteer"
@@ -60,8 +52,9 @@ const (
 )
 
 const (
-	EventActive    = "EVENT-ACTIVE"
-	EventFinished  = "EVENT-FINISHED"
-	EventClosed    = "EVENT-CLOSED"
-	EventCancelled = "EVENT-CANCELLED"
+	EventRecruiting = "EVENT-RECRUITING"
+	EventActive     = "EVENT-ACTIVE"
+	EventFinished   = "EVENT-FINISHED"
+	EventClosed     = "EVENT-CLOSED"
+	EventCancelled  = "EVENT-CANCELLED"
 )
