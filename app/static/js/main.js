@@ -1,329 +1,352 @@
-document.querySelectorAll('.card').forEach((el, idx) => {
-  el.classList.add('reveal');
-  el.style.animationDelay = `${Math.min(idx * 60, 360)}ms`;
-});
-
-document.querySelectorAll('[data-deadline]').forEach((card) => {
-  const timerEl = card.querySelector('.event-timer');
-  if (!timerEl) return;
-  const raw = card.getAttribute('data-deadline');
-  if (!raw) { timerEl.textContent = 'дата окончания не задана'; return; }
-  const end = new Date(raw);
-  const tick = () => {
-    const diff = end - new Date();
-    if (diff <= 0) { timerEl.textContent = 'регистрация закрыта'; return; }
-    const totalMin = Math.floor(diff / 60000);
-    const days = Math.floor(totalMin / (60*24));
-    const h = Math.floor((totalMin % (60*24)) / 60);
-    const m = totalMin % 60;
-    timerEl.textContent = `до конца регистрации: ${days}д ${h}ч ${String(m).padStart(2, '0')}м`;
-  };
-  tick();
-  setInterval(tick, 60000);
-});
-
-document.querySelectorAll('[data-multi-select]').forEach((block) => {
-  const btn = block.querySelector('[data-multi-select-toggle]');
-  const inputs = Array.from(block.querySelectorAll('[data-multi-select-input]'));
-  const search = block.querySelector('[data-multi-select-search]');
-  const renderLabel = () => {
-    const selected = inputs.filter((x) => x.checked);
-    inputs.forEach((x) => x.closest('label')?.classList.toggle('selected', x.checked));
-    if (!selected.length) {
-      btn.textContent = 'выбрать участников';
-      return;
-    }
-    const first = selected[0].closest('label')?.querySelector('span')?.textContent?.trim() || 'участник';
-    btn.textContent = selected.length === 1 ? first : `${first} +${selected.length - 1}`;
-  };
-  btn?.addEventListener('click', () => block.classList.toggle('open'));
-  inputs.forEach((i) => i.addEventListener('change', renderLabel));
-  search?.addEventListener('input', () => {
-    const q = search.value.trim().toLowerCase();
-    block.classList.add('open');
-    inputs.forEach((i) => {
-      const label = i.closest('label');
-      if (!label) return;
-      const text = label.textContent.toLowerCase();
-      label.style.display = text.includes(q) ? 'flex' : 'none';
-    });
-  });
-  renderLabel();
-});
-
-document.addEventListener('click', (e) => {
-  document.querySelectorAll('[data-multi-select].open').forEach((block) => {
-    if (!block.contains(e.target)) block.classList.remove('open');
-  });
-});
-
-document.querySelectorAll('#toast-root .toast').forEach((toast) => {
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transform = 'translateY(8px)';
-    setTimeout(() => toast.remove(), 220);
-  }, 2600);
-});
-
-const bindImagePreview = (inputSelector, previewSelector) => {
-  const input = document.querySelector(inputSelector);
-  const preview = document.querySelector(previewSelector);
-  if (!input || !preview) return;
-  input.addEventListener('change', () => {
-    const file = input.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => { preview.src = e.target?.result; };
-    reader.readAsDataURL(file);
-  });
+const TOKEN_KEY = 'volunteer_platform_token';
+const state = {
+  token: localStorage.getItem(TOKEN_KEY) || '',
+  user: null,
+  events: [],
+  participantsByEvent: new Map(),
 };
 
-bindImagePreview('input[name="event_image_file"]', '#event-image-preview-create');
-bindImagePreview('form[action*="/edit"] input[name="event_image_file"]', '#event-image-preview-edit');
-bindImagePreview('input[name="avatar_file"]', '#avatar-preview');
+const selectors = {
+  authSection: document.querySelector('#auth-section'),
+  sessionLabel: document.querySelector('#session-label'),
+  logoutButton: document.querySelector('#logout-button'),
+  profile: document.querySelector('#profile'),
+  profileBody: document.querySelector('#profile-body'),
+  create: document.querySelector('#create'),
+  admin: document.querySelector('#admin'),
+  eventsList: document.querySelector('#events-list'),
+  toastRoot: document.querySelector('#toast-root'),
+};
 
-const bell = document.querySelector('[data-notifications-toggle]');
-const panel = document.querySelector('[data-notifications-panel]');
-const backdrop = document.querySelector('[data-notifications-backdrop]');
-const closeBtn = document.querySelector('[data-notifications-close]');
-const openNotifications = () => { panel?.classList.add('open'); backdrop?.classList.add('open'); document.body.classList.add('notifications-open'); };
-const closeNotifications = () => { panel?.classList.remove('open'); backdrop?.classList.remove('open'); document.body.classList.remove('notifications-open'); };
-bell?.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); openNotifications(); });
-closeBtn?.addEventListener('click', closeNotifications);
-backdrop?.addEventListener('click', closeNotifications);
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNotifications(); });
+function toast(message, category = 'info') {
+  const element = document.createElement('div');
+  element.className = `toast ${category === 'error' ? 'toast-error' : 'toast-info'}`;
+  element.textContent = message;
+  selectors.toastRoot.append(element);
+  setTimeout(() => element.remove(), 4500);
+}
 
-function setNotificationBellCount(count) {
-  const bellBtn = document.querySelector('[data-notifications-toggle]');
-  let dot = bellBtn?.querySelector('.notification-dot');
-  if (!bellBtn) return;
-  if (count <= 0) {
-    bellBtn.classList.remove('has-unread');
-    dot?.remove();
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function readField(object, ...keys) {
+  for (const key of keys) {
+    if (object && object[key] !== undefined && object[key] !== null) return object[key];
+  }
+  return undefined;
+}
+
+function eventId(event) {
+  return readField(event, 'ID', 'id');
+}
+
+function userId(user) {
+  return readField(user, 'ID', 'id');
+}
+
+function roleOf(user) {
+  return readField(user, 'Role', 'role') || 'Guest';
+}
+
+function canManageEvents() {
+  return ['Admin', 'Organizer'].includes(roleOf(state.user));
+}
+
+function isAdmin() {
+  return roleOf(state.user) === 'Admin';
+}
+
+async function api(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (options.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  if (state.token) {
+    headers.set('Authorization', state.token);
+  }
+
+  const response = await fetch(path, { ...options, headers });
+  const contentType = response.headers.get('Content-Type') || '';
+  const payload = contentType.includes('application/json') ? await response.json() : await response.text();
+
+  if (!response.ok) {
+    const message = typeof payload === 'object' ? payload.message : payload;
+    throw new Error(message || `HTTP ${response.status}`);
+  }
+
+  return payload;
+}
+
+function formDataToObject(form) {
+  return Object.fromEntries(new FormData(form).entries());
+}
+
+function toIsoOrNull(value) {
+  return value ? new Date(value).toISOString() : null;
+}
+
+function numberOrNull(value) {
+  if (value === '' || value === undefined || value === null) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function formatDate(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('ru-RU');
+}
+
+function statusLabel(status) {
+  const labels = {
+    'EVENT-RECRUITING': 'идёт набор',
+    'EVENT-ACTIVE': 'активно',
+    'EVENT-FINISHED': 'завершено',
+    'EVENT-CLOSED': 'закрыто',
+    'EVENT-CANCELLED': 'отменено',
+  };
+  return labels[status] || status || 'без статуса';
+}
+
+function renderProfile() {
+  const user = state.user;
+  selectors.authSection.hidden = Boolean(user);
+  selectors.logoutButton.hidden = !user;
+  selectors.profile.hidden = !user;
+  selectors.create.hidden = !canManageEvents();
+  selectors.admin.hidden = !isAdmin();
+
+  if (!user) {
+    selectors.sessionLabel.textContent = 'Гость';
+    selectors.profileBody.innerHTML = '';
     return;
   }
-  bellBtn.classList.add('has-unread');
-  if (!dot) {
-    dot = document.createElement('span');
-    dot.className = 'notification-dot';
-    bellBtn.appendChild(dot);
-  }
-  dot.textContent = count > 9 ? '9+' : String(count);
-}
 
-function updateNotificationBellCount(delta) {
-  const dot = document.querySelector('[data-notifications-toggle] .notification-dot');
-  if (!dot) return;
-  const raw = dot.textContent.trim();
-  const current = raw === '9+' ? 10 : Number(raw || 0);
-  setNotificationBellCount(Math.max(0, current + delta));
-}
-
-document.querySelectorAll('[data-notification-read-form]').forEach((form) => {
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const response = await fetch(form.action, {
-      method: 'POST',
-      body: new FormData(form),
-      credentials: 'same-origin',
-      headers: { 'X-Requested-With': 'fetch' },
-    });
-    if (!response.ok) return;
-    const item = form.closest('.notification-item');
-    if (item) item.classList.remove('unread');
-    form.remove();
-    updateNotificationBellCount(-1);
-  });
-});
-
-document.querySelectorAll('[data-notifications-read-all-form]').forEach((form) => {
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const response = await fetch(form.action, {
-      method: 'POST',
-      body: new FormData(form),
-      credentials: 'same-origin',
-      headers: { 'X-Requested-With': 'fetch' },
-    });
-    if (!response.ok) return;
-    document.querySelectorAll('.notification-item.unread').forEach((item) => {
-      item.classList.remove('unread');
-      item.querySelector('form[data-notification-read-form]')?.remove();
-    });
-    setNotificationBellCount(0);
-  });
-});
-
-function switchVolunteerSection(section, button) {
-  document.querySelectorAll('.volunteer-section').forEach((el) => { el.style.display = 'none'; });
-  document.querySelectorAll('.volunteer-tab').forEach((el) => { el.classList.remove('active'); });
-  const target = document.getElementById(`volunteer-section-${section}`);
-  if (target) target.style.display = 'block';
-  if (button) button.classList.add('active');
-}
-
-document.querySelectorAll('[data-volunteer-tab]').forEach((button) => {
-  button.addEventListener('click', () => switchVolunteerSection(button.dataset.volunteerTab, button));
-});
-
-function createEventRoleRow() {
-  const row = document.createElement('div');
-  row.className = 'event-role-row';
-  row.innerHTML = `
-    <input name="role_titles" placeholder="Название роли">
-    <input name="role_capacities" type="number" min="1" placeholder="Кол-во людей">
-    <textarea name="role_descriptions" placeholder="Кратко опишите, что будет делать волонтёр"></textarea>
-    <button type="button" class="btn btn-secondary" data-remove-event-role>Удалить</button>
+  const name = [readField(user, 'FirstName', 'first_name'), readField(user, 'LastName', 'last_name')]
+    .filter(Boolean)
+    .join(' ') || readField(user, 'Login', 'login') || `Пользователь #${userId(user)}`;
+  selectors.sessionLabel.textContent = `${name} · ${roleOf(user)}`;
+  selectors.profileBody.innerHTML = `
+    <div><span class="text-muted">ID</span><b>${escapeHtml(userId(user))}</b></div>
+    <div><span class="text-muted">Логин</span><b>${escapeHtml(readField(user, 'Login', 'login') || '—')}</b></div>
+    <div><span class="text-muted">Имя</span><b>${escapeHtml(name)}</b></div>
+    <div><span class="text-muted">Telegram</span><b>${escapeHtml(readField(user, 'Telegram', 'telegram') || '—')}</b></div>
+    <div><span class="text-muted">Роль</span><b>${escapeHtml(roleOf(user))}</b></div>
+    <div><span class="text-muted">Skill Points</span><b>${escapeHtml(readField(user, 'SkillPoints', 'skill_points') || 0)}</b></div>
   `;
-  return row;
 }
 
-const rolesList = document.querySelector('[data-event-roles-list]');
-const addRoleBtn = document.querySelector('[data-add-event-role]');
-const noRolesToggle = document.querySelector('[data-no-roles-toggle]');
-const rolesBuilder = document.querySelector('[data-event-roles-builder]');
-function syncNoRolesState() { if (!noRolesToggle || !rolesBuilder) return; rolesBuilder.style.display = noRolesToggle.checked ? 'none' : ''; }
-addRoleBtn?.addEventListener('click', () => rolesList?.appendChild(createEventRoleRow()));
-noRolesToggle?.addEventListener('change', syncNoRolesState);
-syncNoRolesState();
-document.addEventListener('click', (event) => {
-  const removeBtn = event.target.closest('[data-remove-event-role]');
-  if (!removeBtn) return;
-  const row = removeBtn.closest('.event-role-row');
-  if (!row) return;
-  if (rolesList?.querySelectorAll('.event-role-row').length === 1) {
-    row.querySelectorAll('input, textarea').forEach((el) => { el.value = ''; });
+async function loadMe() {
+  if (!state.token) {
+    state.user = null;
+    renderProfile();
     return;
   }
-  row.remove();
-});
 
-// Reusable image cropper for avatar (circle preview) and event covers (16:9 frame).
-(() => {
-  const cropInputs = document.querySelectorAll('input[type="file"][data-crop-kind]');
-  if (!cropInputs.length) return;
+  try {
+    state.user = await api('/auth/me');
+  } catch (error) {
+    localStorage.removeItem(TOKEN_KEY);
+    state.token = '';
+    state.user = null;
+    toast(`Сессия сброшена: ${error.message}`, 'error');
+  }
+  renderProfile();
+}
 
-  const modal = document.createElement('div');
-  modal.className = 'cropper-backdrop';
-  modal.innerHTML = `
-    <div class="cropper-window">
-      <div class="cropper-head"><h3>Обрезка изображения</h3><button type="button" class="btn btn-secondary" data-crop-close>Закрыть</button></div>
-      <div class="cropper-body">
-        <div class="cropper-stage" data-crop-stage><canvas class="cropper-canvas" data-crop-canvas></canvas><div class="cropper-frame" data-crop-frame></div></div>
-        <aside class="cropper-side">
-          <div class="cropper-preview" data-crop-preview-wrap><p class="text-muted">Предпросмотр</p><canvas data-crop-preview></canvas></div>
-          <label>Масштаб</label><input data-crop-zoom type="range" min="0.5" max="3" step="0.01" value="1">
-          <p class="text-muted">Можно двигать картинку мышкой/пальцем и менять масштаб, как в редакторе фото.</p>
-        </aside>
-      </div>
-      <div class="cropper-actions"><button type="button" class="btn btn-secondary" data-crop-cancel>Отменить</button><button type="button" class="btn btn-primary" data-crop-apply>Применить</button></div>
-    </div>`;
-  document.body.appendChild(modal);
+async function loadParticipants(id) {
+  try {
+    const data = await api(`/events/${id}/participants`);
+    state.participantsByEvent.set(Number(id), data.participants || []);
+  } catch {
+    state.participantsByEvent.set(Number(id), []);
+  }
+}
 
-  const stage = modal.querySelector('[data-crop-stage]');
-  const canvas = modal.querySelector('[data-crop-canvas]');
-  const ctx = canvas.getContext('2d');
-  const frame = modal.querySelector('[data-crop-frame]');
-  const previewWrap = modal.querySelector('[data-crop-preview-wrap]');
-  const previewCanvas = modal.querySelector('[data-crop-preview]');
-  const previewCtx = previewCanvas.getContext('2d');
-  const zoomInput = modal.querySelector('[data-crop-zoom]');
-  let state = null;
+async function loadEvents() {
+  selectors.eventsList.innerHTML = '<article class="card"><p class="text-muted">Загрузка мероприятий…</p></article>';
+  try {
+    state.events = await api('/events');
+    await Promise.all(state.events.map((event) => loadParticipants(eventId(event))));
+    renderEvents();
+  } catch (error) {
+    selectors.eventsList.innerHTML = `<article class="card"><p class="text-muted">${escapeHtml(error.message)}</p></article>`;
+  }
+}
 
-  function frameRect() {
-    const s = stage.getBoundingClientRect();
-    const f = frame.getBoundingClientRect();
-    return { x: f.left - s.left, y: f.top - s.top, w: f.width, h: f.height };
+function renderEvents() {
+  if (!state.events.length) {
+    selectors.eventsList.innerHTML = '<article class="card"><p class="text-muted">Пока нет мероприятий.</p></article>';
+    return;
   }
 
-  function draw() {
-    if (!state) return;
-    const rect = stage.getBoundingClientRect();
-    canvas.width = Math.max(1, Math.round(rect.width));
-    canvas.height = Math.max(1, Math.round(rect.height));
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#09090b';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const cover = Math.max(canvas.width / state.img.width, canvas.height / state.img.height);
-    const scale = cover * Number(zoomInput.value || 1);
-    const w = state.img.width * scale;
-    const h = state.img.height * scale;
-    const x = (canvas.width - w) / 2 + (state.offsetX || 0);
-    const y = (canvas.height - h) / 2 + (state.offsetY || 0);
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(state.img, x, y, w, h);
-    drawPreview();
-  }
+  selectors.eventsList.innerHTML = state.events.map((event) => {
+    const id = eventId(event);
+    const image = readField(event, 'CoverImageURL', 'cover_image_url', 'image') || '/static/img/placeholder.svg';
+    const max = readField(event, 'MaxParticipants', 'max_participants');
+    const participants = state.participantsByEvent.get(Number(id)) || [];
+    const isRegistered = state.user && participants.includes(userId(state.user));
+    const status = readField(event, 'Status', 'status');
+    const canRegister = state.user && status === 'EVENT-RECRUITING';
+    return `
+      <article class="card event-row">
+        <img class="event-avatar" src="${escapeHtml(image)}" alt="">
+        <div class="event-main">
+          <div class="event-head">
+            <div>
+              <h3 class="event-title">#${escapeHtml(id)} · ${escapeHtml(readField(event, 'Title', 'title') || 'Без названия')}</h3>
+              <p class="text-muted">${escapeHtml(readField(event, 'Description', 'description') || 'Описание не указано')}</p>
+            </div>
+            <div class="event-head-chips">
+              <span class="badge">${escapeHtml(statusLabel(status))}</span>
+              <span class="badge badge-success">${escapeHtml(readField(event, 'SkillPoints', 'skill_points') || 0)} SP</span>
+            </div>
+          </div>
+          <div class="event-meta">
+            <span>📍 ${escapeHtml(readField(event, 'Location', 'location') || '—')}</span>
+            <span>🕒 ${escapeHtml(formatDate(readField(event, 'StartDate', 'start_date')))} — ${escapeHtml(formatDate(readField(event, 'EndDate', 'end_date')))}</span>
+            <span>⏳ регистрация до ${escapeHtml(formatDate(readField(event, 'RegistrationDeadline', 'registration_deadline')))}</span>
+            <span>👥 ${escapeHtml(readField(event, 'ParticipantsCount', 'participants_count') || 0)}${max ? ` / ${escapeHtml(max)}` : ''}</span>
+            <span>🧾 участники: ${escapeHtml(participants.length ? participants.join(', ') : 'нет')}</span>
+            <span>👤 организатор ID: ${escapeHtml(readField(event, 'CreatedByID', 'created_by_id') || '—')}</span>
+          </div>
+          <div class="action-row">
+            <button class="btn btn-primary" type="button" data-register-event="${escapeHtml(id)}" ${!canRegister || isRegistered ? 'disabled' : ''}>${escapeHtml(isRegistered ? 'Вы зарегистрированы' : 'Зарегистрироваться')}</button>
+            <button class="btn btn-secondary" type="button" data-cancel-event="${escapeHtml(id)}" ${!isRegistered ? 'disabled' : ''}>Отменить регистрацию</button>
+          </div>
+        </div>
+      </article>
+    `;
+  }).join('');
+}
 
-  function drawPreview() {
-    if (!state) return;
-    const fr = frameRect();
-    const outW = state.kind === 'event' ? 320 : 220;
-    const outH = state.kind === 'event' ? 180 : 220;
-    previewCanvas.width = outW;
-    previewCanvas.height = outH;
-    previewCtx.clearRect(0, 0, outW, outH);
-    previewCtx.drawImage(canvas, fr.x, fr.y, fr.w, fr.h, 0, 0, outW, outH);
-  }
+async function authenticate(path, form) {
+  const data = formDataToObject(form);
+  const result = await api(path, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  state.token = result.token;
+  localStorage.setItem(TOKEN_KEY, state.token);
+  form.reset();
+  await loadMe();
+  await loadEvents();
+}
 
-  function openCropper(input, file) {
-    const img = new Image();
-    img.onload = () => {
-      const kind = input.dataset.cropKind || 'event';
-      state = { input, img, kind, offsetX: 0, offsetY: 0 };
-      frame.className = `cropper-frame ${kind}`;
-      previewWrap.classList.toggle('avatar', kind === 'avatar');
-      zoomInput.value = '1';
-      modal.classList.add('open');
-      requestAnimationFrame(draw);
+function bindForms() {
+  document.querySelector('#login-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      await authenticate('/auth/login', event.currentTarget);
+      toast('Вход выполнен');
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  });
+
+  document.querySelector('#register-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      await authenticate('/auth/register', event.currentTarget);
+      toast('Аккаунт создан');
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  });
+
+  document.querySelector('#event-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = formDataToObject(form);
+    const payload = {
+      title: data.title,
+      description: data.description,
+      location: data.location,
+      image: data.image,
+      start_date: toIsoOrNull(data.start_date),
+      end_date: toIsoOrNull(data.end_date),
+      registration_deadline: toIsoOrNull(data.registration_deadline),
+      max_participants: numberOrNull(data.max_participants),
+      reserve_participants: numberOrNull(data.reserve_participants) || 0,
+      skill_points: numberOrNull(data.skill_points) || 0,
     };
-    img.src = URL.createObjectURL(file);
-  }
 
-  function closeCropper() { modal.classList.remove('open'); state = null; }
-
-  function applyCrop() {
-    if (!state) return;
-    const fr = frameRect();
-    const out = document.createElement('canvas');
-    out.width = state.kind === 'event' ? 1280 : 512;
-    out.height = state.kind === 'event' ? 720 : 512;
-    out.getContext('2d').drawImage(canvas, fr.x, fr.y, fr.w, fr.h, 0, 0, out.width, out.height);
-    const dataURL = out.toDataURL('image/png');
-    const hidden = state.input.dataset.cropHidden ? document.querySelector(state.input.dataset.cropHidden) : null;
-    const preview = state.input.dataset.cropPreview ? document.querySelector(state.input.dataset.cropPreview) : null;
-    if (hidden) hidden.value = dataURL;
-    if (preview) preview.src = dataURL;
-    closeCropper();
-  }
-
-  cropInputs.forEach((input) => {
-    input.addEventListener('change', () => {
-      const file = input.files?.[0];
-      if (file) openCropper(input, file);
-    });
+    try {
+      await api('/events', { method: 'POST', body: JSON.stringify(payload) });
+      form.reset();
+      toast('Мероприятие создано');
+      await loadEvents();
+    } catch (error) {
+      toast(error.message, 'error');
+    }
   });
 
-  zoomInput.addEventListener('input', draw);
-  modal.querySelector('[data-crop-apply]').addEventListener('click', applyCrop);
-  modal.querySelector('[data-crop-close]').addEventListener('click', closeCropper);
-  modal.querySelector('[data-crop-cancel]').addEventListener('click', closeCropper);
-  modal.addEventListener('click', (event) => { if (event.target === modal) closeCropper(); });
+  document.querySelector('#approve-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const { event_id: id } = formDataToObject(event.currentTarget);
+    try {
+      const result = await api(`/admin/events/${id}/approve`, { method: 'POST' });
+      toast(result.message || 'Мероприятие закрыто');
+      await loadEvents();
+      await loadMe();
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  });
 
-  let drag = null;
-  stage.addEventListener('pointerdown', (event) => {
-    if (!state) return;
-    drag = { x: event.clientX, y: event.clientY, ox: state.offsetX || 0, oy: state.offsetY || 0 };
-    stage.classList.add('dragging');
-    stage.setPointerCapture(event.pointerId);
+  document.querySelector('#promote-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const { user_id: id, role } = formDataToObject(event.currentTarget);
+    try {
+      const result = await api(`/admin/users/${id}/promote`, {
+        method: 'POST',
+        body: JSON.stringify({ role }),
+      });
+      toast(result.message || 'Роль обновлена');
+    } catch (error) {
+      toast(error.message, 'error');
+    }
   });
-  stage.addEventListener('pointermove', (event) => {
-    if (!drag) return;
-    state.offsetX = drag.ox + event.clientX - drag.x;
-    state.offsetY = drag.oy + event.clientY - drag.y;
-    draw();
+}
+
+function bindActions() {
+  selectors.logoutButton?.addEventListener('click', async () => {
+    localStorage.removeItem(TOKEN_KEY);
+    state.token = '';
+    state.user = null;
+    renderProfile();
+    renderEvents();
+    toast('Вы вышли из аккаунта');
   });
-  stage.addEventListener('pointerup', () => { drag = null; stage.classList.remove('dragging'); });
-  stage.addEventListener('pointercancel', () => { drag = null; stage.classList.remove('dragging'); });
-  window.addEventListener('resize', () => { if (state) draw(); });
-})();
+
+  document.querySelector('#refresh-events')?.addEventListener('click', loadEvents);
+
+  document.addEventListener('click', async (event) => {
+    const registerButton = event.target.closest('[data-register-event]');
+    const cancelButton = event.target.closest('[data-cancel-event]');
+    const id = registerButton?.dataset.registerEvent || cancelButton?.dataset.cancelEvent;
+    if (!id) return;
+
+    try {
+      const result = await api(`/events/${id}/register`, {
+        method: registerButton ? 'POST' : 'DELETE',
+      });
+      toast(result.message || 'Готово');
+      await loadEvents();
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  });
+}
+
+bindForms();
+bindActions();
+await loadMe();
+await loadEvents();

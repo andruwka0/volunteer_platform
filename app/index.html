@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Volunteer Platform</title>
+  <link rel="stylesheet" href="/static/css/style.css?v=api-ui-1">
+</head>
+<body>
+  <nav class="top-nav">
+    <a href="#events">Мероприятия</a>
+    <a href="#create">Создать</a>
+    <a href="#profile">Профиль</a>
+    <a href="#admin">Админка</a>
+    <div class="top-nav-actions">
+      <span id="session-label" class="text-muted">Гость</span>
+      <button id="logout-button" class="btn btn-secondary" type="button" hidden>Выйти</button>
+    </div>
+  </nav>
+
+  <main class="container">
+    <div id="toast-root"></div>
+
+    <section class="hero-card card">
+      <div>
+        <span class="badge">Volunteer Platform</span>
+        <h1>Волонтёрские мероприятия</h1>
+        <p class="text-muted">Frontend работает с готовым Go backend через JSON API: авторизация, список мероприятий, регистрация участников и админ-действия.</p>
+      </div>
+      <button id="refresh-events" class="btn btn-secondary" type="button">Обновить список</button>
+    </section>
+
+    <section id="auth-section" class="auth-grid">
+      <article class="card">
+        <h2>Вход</h2>
+        <form id="login-form" autocomplete="on">
+          <input name="login" placeholder="Логин" required>
+          <input name="password" type="password" placeholder="Пароль" required>
+          <button class="btn btn-primary" type="submit">Войти</button>
+        </form>
+      </article>
+      <article class="card">
+        <h2>Регистрация</h2>
+        <form id="register-form" autocomplete="on">
+          <div class="form-row-2">
+            <input name="first_name" placeholder="Имя">
+            <input name="last_name" placeholder="Фамилия">
+          </div>
+          <input name="telegram" placeholder="Telegram">
+          <input name="login" placeholder="Логин" required>
+          <input name="password" type="password" placeholder="Пароль" required>
+          <button class="btn btn-secondary" type="submit">Создать аккаунт</button>
+        </form>
+      </article>
+    </section>
+
+    <section id="profile" class="card profile-card" hidden>
+      <h2>Профиль</h2>
+      <div id="profile-body" class="details-grid"></div>
+    </section>
+
+    <section id="events" class="section-block">
+      <div class="section-head">
+        <div>
+          <h2>Мероприятия</h2>
+          <p class="text-muted">Публичный список из backend `GET /events`.</p>
+        </div>
+      </div>
+      <div id="events-list" class="event-stack"></div>
+    </section>
+
+    <section id="create" class="card organizer-card" hidden>
+      <h2>Создать мероприятие</h2>
+      <p class="text-muted">Доступно ролям Admin и Organizer. Backend принимает ISO-даты и поля snake_case.</p>
+      <form id="event-form">
+        <input name="title" placeholder="Название" required>
+        <textarea name="description" placeholder="Описание"></textarea>
+        <input name="location" placeholder="Локация">
+        <input name="image" placeholder="URL изображения/обложки">
+        <div class="form-row-2">
+          <label>Начало<input name="start_date" type="datetime-local" required></label>
+          <label>Окончание<input name="end_date" type="datetime-local" required></label>
+        </div>
+        <div class="form-row-2">
+          <label>Дедлайн регистрации<input name="registration_deadline" type="datetime-local"></label>
+          <label>Макс. участников<input name="max_participants" type="number" min="0" placeholder="0 = без лимита"></label>
+        </div>
+        <div class="form-row-2">
+          <input name="reserve_participants" type="number" min="0" placeholder="Резерв" value="0">
+          <input name="skill_points" type="number" min="0" placeholder="Skill Points" value="0">
+        </div>
+        <button class="btn btn-primary" type="submit">Создать</button>
+      </form>
+    </section>
+
+    <section id="admin" class="card admin-card" hidden>
+      <h2>Админка</h2>
+      <div class="admin-grid">
+        <form id="approve-form">
+          <h3>Закрыть завершённое мероприятие</h3>
+          <input name="event_id" type="number" min="1" placeholder="ID мероприятия" required>
+          <button class="btn btn-secondary" type="submit">Начислить баллы</button>
+        </form>
+        <form id="promote-form">
+          <h3>Изменить роль пользователя</h3>
+          <input name="user_id" type="number" min="1" placeholder="ID пользователя" required>
+          <select name="role" required>
+            <option value="Organizer">Organizer</option>
+            <option value="Admin">Admin</option>
+          </select>
+          <button class="btn btn-secondary" type="submit">Сохранить роль</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/js/main.js?v=api-ui-1" type="module"></script>
+</body>
+</html>
