@@ -23,14 +23,14 @@ func New(h *handler.Handler, store *store.Store) http.Handler {
 	router.Handle("POST /events", middleware.Auth(http.HandlerFunc(h.CreateEvent)))
 	router.Handle("POST /events/{id}/register", middleware.Auth(http.HandlerFunc(h.RegisterForEvent)))
 	router.Handle("DELETE /events/{id}/register", middleware.Auth(http.HandlerFunc(h.CancelRegistration)))
-	router.Handle("POST /events/{id}/finish", middleware.Auth(http.HandlerFunc(h.FinishEvent)))
+	router.Handle("GET /auth/me", middleware.Auth(http.HandlerFunc(h.GetMe)))
 
 	// Админские роуты (нужен Auth + RequireAdmin)
 	router.Handle("POST /admin/events/{id}/approve",
-		middleware.RequireAdmin(store)(middleware.Auth(http.HandlerFunc(h.ApproveEvent))))
+		middleware.Auth(middleware.RequireAdmin(store)(http.HandlerFunc(h.ApproveEvent))))
 
 	router.Handle("POST /admin/users/{id}/promote",
-		middleware.RequireAdmin(store)(middleware.Auth(http.HandlerFunc(h.PromoteUser))))
+		middleware.Auth(middleware.RequireAdmin(store)(http.HandlerFunc(h.PromoteUser))))
 
 	// Глобальные middleware
 	var handlers http.Handler = router

@@ -31,11 +31,13 @@ type Store struct {
 
 func New() *Store {
 	return &Store{
-		users:        make(map[int64]*domain.User),
-		usersByLogin: make(map[string]*domain.User),
-		events:       make(map[int64]*domain.Event),
-		nextUserID:   1,
-		nextEventID:  1,
+		users:             make(map[int64]*domain.User),
+		usersByLogin:      make(map[string]*domain.User),
+		events:            make(map[int64]*domain.Event),
+		eventParticipants: make(map[int64][]int64),
+		eventReserve:      make(map[int64][]int64),
+		nextUserID:        1,
+		nextEventID:       1,
 	}
 }
 
@@ -218,12 +220,14 @@ func (s *Store) RegisterForEvent(eventID, userID int64) error {
 func (s *Store) GetEventParticipants(eventID int64) ([]int64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	_, ok := s.eventParticipants[eventID]
-	if !ok {
+	if _, ok := s.events[eventID]; !ok {
 		return nil, domain.ErrEventNotFound
 	}
-	participants := make([]int64, 0, len(s.eventParticipants))
-	copy(participants, s.eventParticipants[eventID])
+	participantIDs := s.eventParticipants[eventID]
+
+	participants := make([]int64, len(participantIDs))
+	copy(participants, participantIDs)
+
 	return participants, nil
 }
 

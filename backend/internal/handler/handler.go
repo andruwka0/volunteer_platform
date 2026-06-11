@@ -23,11 +23,11 @@ type Service interface {
 		maxParticipants *int64, reserveParticipants, skillPoints, createdByID int64) (*domain.Event, error)
 	GetEventByID(eventID int64) (*domain.Event, error)
 	GetAllEvents() ([]*domain.Event, error)
-	FinishEvent(eventID, requesterID int64) error
 	ApproveAndAwardPoints(eventID int64, adminID int64) error
 	RegisterForEvent(eventID, userID int64) error
 	CancelRegistration(eventID, userID int64) error
 	GetEventParticipants(eventID int64) ([]int64, error)
+	GetUserByID(id int64) (*domain.User, error)
 }
 
 type Handler struct {
@@ -325,37 +325,6 @@ func (h *Handler) GetEventParticipants(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// POST /events/{id}/finish (для Организатора)
-
-func (h *Handler) FinishEvent(w http.ResponseWriter, r *http.Request) {
-	userID, ok := UserIDFromContext(r.Context())
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Требуется авторизация", nil)
-		return
-	}
-
-	idStr := r.PathValue("id")
-	eventID, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_EVENT_ID", "Неверный ID мероприятия", err)
-		return
-	}
-
-	if err := h.svc.FinishEvent(eventID, userID); err != nil {
-		switch err {
-		case domain.ErrInvalidRole:
-			writeError(w, http.StatusForbidden, "FORBIDDEN", "Недостаточно прав для завершения мероприятия", err)
-		case domain.ErrEventNotFound:
-			writeError(w, http.StatusNotFound, "EVENT_NOT_FOUND", "Мероприятие не найдено", err)
-		default:
-			writeError(w, http.StatusBadRequest, "FINISH_FAILED", err.Error(), err)
-		}
-		return
-	}
-
-	writeJSON(w, http.StatusOK, MessageResponse{Message: "Мероприятие завершено"})
-}
-
 // POST /admin/events/{id}/approve (для Админа)
 
 func (h *Handler) ApproveEvent(w http.ResponseWriter, r *http.Request) {
@@ -429,4 +398,27 @@ func (h *Handler) PromoteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, MessageResponse{Message: "Роль успешно изменена"})
+}
+
+// GET /auth/me
+
+func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
+	userID, ok := UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Требуется авторизация", nil)
+		return
+	}
+
+	user, err := h.svc.GetUserByID(userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrUserNotFound):
+			writeError(w, http.StatusNotFound, "USER_NOT_FOUND", "Пользователь не найден", err)
+		default:
+			writeError(w, http.StatusInternalServerError, "GET_USER_FAILED", "Не удалось получить данные пользователя", err)
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, user)
 }

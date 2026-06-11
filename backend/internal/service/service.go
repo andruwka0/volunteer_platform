@@ -126,24 +126,6 @@ func (s *Service) GetAllEvents() ([]*domain.Event, error) {
 	return s.repo.GetAllEvents()
 }
 
-func (s *Service) FinishEvent(eventID, requesterID int64) error {
-	user, err := s.repo.GetUserByID(requesterID)
-	if err != nil {
-		return domain.ErrUserNotFound
-	}
-	if user.Role != domain.RoleOrganizer && user.Role != domain.RoleAdmin {
-		return domain.ErrInvalidRole
-	}
-	event, err := s.repo.GetEventByID(eventID)
-	if err != nil {
-		return domain.ErrEventNotFound
-	}
-	if event.Status != domain.EventActive {
-		return errors.New("можно завершить только активное мероприятие")
-	}
-	return s.repo.UpdateEventStatus(eventID, domain.EventFinished)
-}
-
 func (s *Service) ApproveAndAwardPoints(eventID int64, adminID int64) error {
 	user, err := s.repo.GetUserByID(adminID)
 	if err != nil {
@@ -191,4 +173,8 @@ func (s *Service) CancelRegistration(eventID, userID int64) error {
 
 func (s *Service) GetEventParticipants(eventID int64) ([]int64, error) {
 	return s.repo.GetEventParticipants(eventID)
+}
+
+func (s *Service) GetUserByID(id int64) (*domain.User, error) {
+	return s.repo.GetUserByID(id)
 }

@@ -20,8 +20,14 @@ import (
 )
 
 func main() {
-	if err := godotenv.Load(); err != nil {
+	err := godotenv.Load()
+	if err != nil {
+		err = godotenv.Load("../.env")
+	}
+	if err != nil {
 		log.Println("Файл .env не найден, используются системные переменные окружения")
+	} else {
+		log.Println("Файл .env успешно загружен")
 	}
 	cfg, err := config.Load()
 	if err != nil {
