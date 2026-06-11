@@ -3,11 +3,11 @@ package service
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
+	"time"
+
 	"github.com/andruwka0/volunteer_platform/internal/auth"
 	"github.com/andruwka0/volunteer_platform/internal/domain"
-	"time"
 )
 
 type repository interface {
@@ -85,12 +85,12 @@ func (s *Service) PromoteUser(targetUserID int64, newRole string, requesterID in
 
 	// Повышать можно только до Organizer или Admin
 	if newRole != domain.RoleOrganizer && newRole != domain.RoleAdmin {
-		return errors.New("можно повысить только до Organizer или Admin")
+		return domain.ErrInvalidPromotion
 	}
 
 	// Нельзя понижать самого себя (защита от дурака)
 	if targetUserID == requesterID && newRole != domain.RoleAdmin {
-		return errors.New("нельзя понизить собственную роль")
+		return domain.ErrCannotPromoteSelf
 	}
 
 	if _, err := s.repo.GetUserByID(targetUserID); err != nil {
@@ -112,7 +112,7 @@ func (s *Service) CreateEvent(title, description, location, image string,
 		return nil, domain.ErrInvalidRole
 	}
 	if !endDate.After(startDate) {
-		return nil, errors.New("дата окончания должна быть позже даты начала")
+		return nil, domain.ErrInvalidDates
 	}
 	return s.repo.CreateEvent(title, description, location, image,
 		startDate, endDate, registrationDeadline, maxParticipants,
@@ -139,7 +139,7 @@ func (s *Service) ApproveAndAwardPoints(eventID int64, adminID int64) error {
 		return domain.ErrEventNotFound
 	}
 	if event.Status != domain.EventFinished {
-		return errors.New("можно начислить баллы только для завершенных (FINISHED) ивентов")
+		return domain.ErrEventNotFinished
 	}
 	err = s.repo.AwardPointsToAllParticipants(eventID)
 	if err != nil {
@@ -159,10 +159,10 @@ func (s *Service) RegisterForEvent(eventID, userID int64) error {
 		return domain.ErrEventNotFound
 	}
 	if event.Status != domain.EventRecruiting {
-		return errors.New("регистрация на это мероприятие закрыта")
+		return domain.ErrRegistrationClosed
 	}
 	if event.CreatedByID == userID {
-		return errors.New("организатор не может регистрироваться на собственный ивент")
+		return domain.ErrOrganizerSelfReg
 	}
 	return s.repo.RegisterForEvent(eventID, userID)
 }

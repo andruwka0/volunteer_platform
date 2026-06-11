@@ -6,11 +6,17 @@ import (
 )
 
 var (
-	ErrUserExists      = errors.New("пользователь уже существует")
-	ErrUserNotFound    = errors.New("пользователь не найден")
-	ErrInvalidPassword = errors.New("неверный пароль")
-	ErrInvalidRole     = errors.New("не соответсвующая роль")
-	ErrEventNotFound   = errors.New("мероприятие не найдено")
+	ErrUserExists         = errors.New("пользователь уже существует")
+	ErrUserNotFound       = errors.New("пользователь не найден")
+	ErrInvalidPassword    = errors.New("неверный пароль")
+	ErrInvalidRole        = errors.New("не соответсвующая роль")
+	ErrEventNotFound      = errors.New("мероприятие не найдено")
+	ErrInvalidDates       = errors.New("дата окончания должна быть позже даты начала")
+	ErrInvalidPromotion   = errors.New("можно повысить только до Organizer или Admin")
+	ErrCannotPromoteSelf  = errors.New("нельзя понизить собственную роль")
+	ErrEventNotFinished   = errors.New("можно начислить баллы только для завершенных (FINISHED) ивентов")
+	ErrRegistrationClosed = errors.New("регистрация на это мероприятие закрыта")
+	ErrOrganizerSelfReg   = errors.New("организатор не может регистрироваться на собственный ивент")
 )
 
 type User struct {

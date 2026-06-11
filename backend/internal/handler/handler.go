@@ -177,10 +177,6 @@ func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "MISSING_DATES", "Даты начала и окончания обязательны", nil)
 		return
 	}
-	if !req.EndDate.After(req.StartDate) {
-		writeError(w, http.StatusBadRequest, "INVALID_DATES", "Дата окончания должна быть позже даты начала", nil)
-		return
-	}
 
 	event, err := h.svc.CreateEvent(
 		req.Title, req.Description, req.Location, req.Image,
@@ -188,15 +184,19 @@ func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		req.MaxParticipants, req.ReserveParticipants, req.SkillPoints, userID,
 	)
 	if err != nil {
-		if errors.Is(err, domain.ErrInvalidRole) {
+		switch {
+		case errors.Is(err, domain.ErrInvalidRole):
 			writeError(w, http.StatusForbidden, "FORBIDDEN", "Недостаточно прав для создания мероприятия", err)
-			return
-		}
-		if errors.Is(err, domain.ErrUserNotFound) {
+
+		case errors.Is(err, domain.ErrUserNotFound):
 			writeError(w, http.StatusNotFound, "USER_NOT_FOUND", "Создатель не найден", err)
-			return
+
+		case errors.Is(err, domain.ErrInvalidDates):
+			writeError(w, http.StatusBadRequest, "INVALID_DATES", "дата окончания должна быть позже даты начала", err)
+
+		default:
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Внутренняя ошибка сервера", err)
 		}
-		writeError(w, http.StatusInternalServerError, "CREATE_EVENT_FAILED", "Не удалось создать мероприятие", err)
 		return
 	}
 
@@ -254,14 +254,22 @@ func (h *Handler) RegisterForEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.RegisterForEvent(eventID, userID); err != nil {
-		switch err {
-		case domain.ErrEventNotFound:
+	if errEvent := h.svc.RegisterForEvent(eventID, userID); errEvent != nil {
+		switch {
+		case errors.Is(errEvent, domain.ErrEventNotFound):
 			writeError(w, http.StatusNotFound, "EVENT_NOT_FOUND", "Мероприятие не найдено", err)
-		case domain.ErrUserNotFound:
+
+		case errors.Is(errEvent, domain.ErrUserNotFound):
 			writeError(w, http.StatusNotFound, "USER_NOT_FOUND", "Пользователь не найден", err)
+
+		case errors.Is(errEvent, domain.ErrRegistrationClosed):
+			writeError(w, http.StatusBadRequest, "REGISTRATION_CLOSED", "Регистрация закрыта", err)
+
+		case errors.Is(errEvent, domain.ErrOrganizerSelfReg):
+			writeError(w, http.StatusBadRequest, "ORGANIZER_SELF_REG", "Организатор не может регаться на свои же ивенты", err)
+
 		default:
-			writeError(w, http.StatusBadRequest, "REGISTRATION_FAILED", err.Error(), err)
+			writeError(w, http.StatusBadRequest, "REGISTRATION_FAILED", "Регистрация не прошла", err)
 		}
 		return
 	}
@@ -285,12 +293,13 @@ func (h *Handler) CancelRegistration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.CancelRegistration(eventID, userID); err != nil {
-		switch err {
-		case domain.ErrEventNotFound:
+	if errCancel := h.svc.CancelRegistration(eventID, userID); errCancel != nil {
+		switch {
+		case errors.Is(errCancel, domain.ErrEventNotFound):
 			writeError(w, http.StatusNotFound, "EVENT_NOT_FOUND", "Мероприятие не найдено", err)
+
 		default:
-			writeError(w, http.StatusBadRequest, "CANCEL_FAILED", err.Error(), err)
+			writeError(w, http.StatusBadRequest, "CANCEL_FAILED", "Отмена не удалась", err)
 		}
 		return
 	}
@@ -341,14 +350,19 @@ func (h *Handler) ApproveEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.ApproveAndAwardPoints(eventID, adminID); err != nil {
-		switch err {
-		case domain.ErrInvalidRole:
+	if errPoints := h.svc.ApproveAndAwardPoints(eventID, adminID); errPoints != nil {
+		switch {
+		case errors.Is(errPoints, domain.ErrInvalidRole):
 			writeError(w, http.StatusForbidden, "FORBIDDEN", "Только администратор может подтверждать мероприятия", err)
-		case domain.ErrEventNotFound:
+
+		case errors.Is(errPoints, domain.ErrEventNotFound):
 			writeError(w, http.StatusNotFound, "EVENT_NOT_FOUND", "Мероприятие не найдено", err)
+
+		case errors.Is(errPoints, domain.ErrEventNotFinished):
+			writeError(w, http.StatusBadRequest, "EVENT_NOT_FINISHED", "Начисление только для Finished events", err)
+
 		default:
-			writeError(w, http.StatusBadRequest, "APPROVE_FAILED", err.Error(), err)
+			writeError(w, http.StatusBadRequest, "APPROVE_FAILED", "Начисление не удалось", err)
 		}
 		return
 	}
@@ -385,14 +399,22 @@ func (h *Handler) PromoteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.PromoteUser(targetID, req.Role, requesterID); err != nil {
-		switch err {
-		case domain.ErrInvalidRole:
+	if errRole := h.svc.PromoteUser(targetID, req.Role, requesterID); errRole != nil {
+		switch {
+		case errors.Is(errRole, domain.ErrInvalidRole):
 			writeError(w, http.StatusForbidden, "FORBIDDEN", "Недостаточно прав для изменения роли", err)
-		case domain.ErrUserNotFound:
+
+		case errors.Is(errRole, domain.ErrUserNotFound):
 			writeError(w, http.StatusNotFound, "USER_NOT_FOUND", "Пользователь не найден", err)
+
+		case errors.Is(errRole, domain.ErrInvalidPromotion):
+			writeError(w, http.StatusBadRequest, "INVALID_PROMOTION", "Неверная роль для повышения", err)
+
+		case errors.Is(errRole, domain.ErrCannotPromoteSelf):
+			writeError(w, http.StatusBadRequest, "CANNOT_PROMOTE_SELF", "Нельзя понизить себя", err)
+
 		default:
-			writeError(w, http.StatusBadRequest, "PROMOTE_FAILED", err.Error(), err)
+			writeError(w, http.StatusBadRequest, "PROMOTE_FAILED", "Повышение не удалось", err)
 		}
 		return
 	}
@@ -414,6 +436,7 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, domain.ErrUserNotFound):
 			writeError(w, http.StatusNotFound, "USER_NOT_FOUND", "Пользователь не найден", err)
+
 		default:
 			writeError(w, http.StatusInternalServerError, "GET_USER_FAILED", "Не удалось получить данные пользователя", err)
 		}
