@@ -1,13 +1,13 @@
 import { createServer } from 'node:http';
 import { createReadStream, existsSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
-import { extname, join, normalize, resolve } from 'node:path';
+import { extname, join, normalize, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const isProduction = process.env.NODE_ENV === 'production';
+const isProduction = process.env.NODE_ENV === 'production' || process.argv.includes('--production');
 const publicRoot = resolve(__dirname, isProduction ? 'dist' : '.');
-const backendUrl = new URL(process.env.BACKEND_URL || 'http://localhost:8080');
+const backendUrl = new URL(process.env.BACKEND_URL || 'http://127.0.0.1:8080');
 const port = Number(process.env.FRONTEND_PORT || process.env.PORT || 5173);
 const host = process.env.FRONTEND_HOST || '127.0.0.1';
 const apiPrefixes = ['/auth', '/events', '/admin'];
@@ -77,7 +77,8 @@ async function serveStatic(req, res) {
   const safePath = normalize(relativePath).replace(/^(\.\.(\/|\\|$))+/, '');
   let filePath = resolve(join(publicRoot, safePath));
 
-  if (!filePath.startsWith(publicRoot)) {
+  const relativeToRoot = relative(publicRoot, filePath);
+  if (relativeToRoot === '..' || relativeToRoot.startsWith(`..${sep}`)) {
     send(res, 403, 'Forbidden');
     return;
   }
