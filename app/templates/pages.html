@@ -1,0 +1,191 @@
+{{define "dashboard"}}{{template "header" .}}
+<h1>Привет, {{.User.FullName}}</h1>
+<p>Пять ближайших ивентов 👇</p>
+<div class="event-stack">
+  {{range .Events}}{{template "event_card" .}}{{else}}<p class="text-muted">Пока нет мероприятий.</p>{{end}}
+</div>
+{{template "footer" .}}{{end}}
+
+{{define "events"}}{{template "header" .}}
+<h1>Все ивенты</h1>
+<p>
+  <a class="btn {{if eq .Tab "future"}}btn-primary{{else}}btn-secondary{{end}}" href="/events?tab=future">Впереди</a>
+  <a class="btn {{if eq .Tab "past"}}btn-primary{{else}}btn-secondary{{end}}" href="/events?tab=past">Прошедшие</a>
+</p>
+<div class="event-stack">
+  {{range .Events}}{{template "event_card" .}}{{else}}<p class="text-muted">Ивентов нет.</p>{{end}}
+</div>
+{{template "footer" .}}{{end}}
+
+{{define "event_card"}}
+<article class="card event-row event-row-main" data-deadline="{{fmtDatePtr .RegistrationDeadline "2006-01-02T15:04:05Z07:00"}}">
+  <img class="event-avatar" src="{{fallback .CoverImageURL "/static/img/placeholder.svg"}}" alt="event image">
+  <div class="event-main">
+    <div class="event-head">
+      <a class="event-title" href="/events/{{.ID}}">{{.Title}}</a>
+      {{if eq .Status "ongoing"}}<div class="badge badge-success">on going</div>{{else}}<div class="event-timer">таймер...</div>{{end}}
+    </div>
+    <p>{{.ShortDescription}}</p>
+    <p><span class="badge">{{.RecruitmentStatus}}</span></p>
+    <p class="text-muted">Участники: {{.ParticipantsCount}} / {{maxp .MaxParticipants}} · SP: {{.SPPoints}}</p>
+    {{if gt .ReserveParticipants 0}}<p class="text-muted">Резерв: {{.ReserveCount}} / {{.ReserveParticipants}}</p>{{end}}
+  </div>
+</article>
+{{end}}
+
+{{define "event_detail"}}{{template "header" .}}
+<article class="card event-detail-card">
+  <img class="event-cover" src="{{fallback .Event.CoverImageURL "/static/img/placeholder.svg"}}" alt="event image">
+  <h1>{{.Event.Title}}</h1>
+  <p class="text-muted">{{fmtDate .Event.StartDate "02.01.2006"}} — {{fmtDate .Event.EndDate "02.01.2006"}} · {{.Event.Location}}</p>
+  <p class="event-registration-deadline">регистрация до: <b>{{fmtDatePtr .Event.RegistrationDeadline "02.01.2006 15:04"}}</b></p>
+  <p>{{.Event.FullDescription}}</p>
+  <p>Организатор: {{if .Organizer}}{{.Organizer.FullName}}{{end}} · Участников: {{.ParticipantsCount}} · SP: {{.Event.SPPoints}}</p>
+  {{if .IsEventOrganizer}}<p><a class="btn btn-primary" href="/events/{{.Event.ID}}/manage-volunteers">Управлять волонтёрами</a></p>{{end}}
+</article>
+
+<section class="card" style="margin-top:14px">
+  <h3>Регистрация</h3>
+  {{if .CanRegister}}
+    {{if .IsRegistered}}
+      <p class="badge">Ваша заявка: {{.Application.Status}}</p>
+      {{if .CanUnregister}}
+      <form method="post" action="/events/{{.Event.ID}}/unregister">
+        <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+        <button class="btn btn-secondary">Отменить регистрацию, не смогу прийти</button>
+      </form>
+      {{else}}
+      <p class="text-muted">Если ты не можешь прийти, напиши в Telegram организатору.</p>
+      {{end}}
+    {{else}}
+      <form method="post" action="/events/{{.Event.ID}}/register">
+        <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+        {{if .Roles}}
+        <p class="text-muted">Выберите роли, на которые готовы откликнуться:</p>
+        <div class="event-role-choice-list">
+        {{range .Roles}}
+          <label class="event-role-choice"><input type="checkbox" name="desired_role_ids" value="{{.ID}}"> <b>{{.Title}}</b>{{if .Description}}<span class="text-muted"> — {{.Description}}</span>{{end}}</label>
+        {{end}}
+        </div>
+        {{end}}
+        <button class="btn btn-primary">Зарегистрироваться</button>
+      </form>
+    {{end}}
+  {{else}}
+    <p class="text-muted">Организатор уже добавлен в мероприятие.</p>
+  {{end}}
+</section>
+
+<section class="card" style="margin-top:14px">
+  <h3>Комментарии</h3>
+  <form method="post" action="/events/{{.Event.ID}}/review">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <input type="hidden" name="rating" value="10">
+    <textarea name="comment" rows="3" placeholder="Комментарий после участия"></textarea>
+    <button class="btn btn-secondary">Отправить комментарий</button>
+  </form>
+</section>
+
+<section class="card" style="margin-top:14px">
+  <h3>Комментарии участников</h3>
+  {{range .Reviews}}
+  <article class="review-item">
+    <p class="review-author">@{{.Username}} · {{.FullName}}</p>
+    <p class="review-meta">оценка: {{.Rating}}/10</p>
+    <p class="review-text">{{fallback .Comment "без текста"}}</p>
+  </article>
+  {{else}}<p class="text-muted">пока никто не оставил отзыв.</p>{{end}}
+</section>
+{{template "footer" .}}{{end}}
+
+{{define "manage_volunteers"}}{{template "header" .}}
+<h1>Волонтёры: {{.Event.Title}}</h1>
+<p><a class="btn btn-secondary" href="/events/{{.Event.ID}}">← к ивенту</a> <a class="btn btn-primary" href="/events/{{.Event.ID}}/export-volunteers.xlsx">Экспорт XLSX</a></p>
+<div class="volunteer-tabs">
+  <button class="volunteer-tab active" type="button" data-volunteer-tab="pending">Ожидают решения <span class="volunteer-tab-count">{{len .Pending}}</span></button>
+  <button class="volunteer-tab" type="button" data-volunteer-tab="approved">Согласовано <span class="volunteer-tab-count">{{len .Approved}}</span></button>
+  <button class="volunteer-tab" type="button" data-volunteer-tab="reserve">Резерв <span class="volunteer-tab-count">{{len .Reserve}}</span></button>
+  <button class="volunteer-tab" type="button" data-volunteer-tab="rejected">Не согласовано <span class="volunteer-tab-count">{{len .Rejected}}</span></button>
+</div>
+<section class="card volunteer-section" id="volunteer-section-pending">{{range .Pending}}{{template "application_row" .}}{{else}}<p class="text-muted">Нет заявок.</p>{{end}}</section>
+<section class="card volunteer-section" id="volunteer-section-approved" style="display:none">{{range .Approved}}{{template "application_row" .}}{{else}}<p class="text-muted">Нет участников.</p>{{end}}</section>
+<section class="card volunteer-section" id="volunteer-section-reserve" style="display:none">{{range .Reserve}}{{template "application_row" .}}{{else}}<p class="text-muted">Резерв пуст.</p>{{end}}</section>
+<section class="card volunteer-section" id="volunteer-section-rejected" style="display:none">{{range .Rejected}}{{template "application_row" .}}{{else}}<p class="text-muted">Нет отклонённых.</p>{{end}}</section>
+{{template "footer" .}}{{end}}
+
+{{define "application_row"}}
+<div class="application-row">
+  <p><b>{{.U.FullName}}</b> @{{.U.Username}} · {{.P.Status}}{{if .Desired}} · желаемая роль: {{.Desired}}{{end}}{{if .Assigned}} · назначена: {{.Assigned}}{{end}}</p>
+  <form method="post" action="/events/{{.P.EventID}}/applications/{{.P.ID}}/status">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <select name="status"><option value="approved">Согласовать</option><option value="reserve">В резерв</option><option value="rejected">Не согласовать</option><option value="pending">В ожидание</option></select>
+    <button class="btn btn-secondary">Обновить</button>
+  </form>
+</div>
+{{end}}
+
+{{define "people"}}{{template "header" .}}
+<h1>Поиск людей</h1>
+<form><input name="q" value="{{.Q}}" placeholder="имя, username, telegram"><button class="btn btn-primary">искать</button></form>
+<div class="grid">{{range .Users}}<article class="card"><p><b>{{.FullName}}</b> (@{{.Username}})</p><p>{{.Role}} · SP: {{.SkillPoints}}</p><a class="btn btn-secondary" href="/people/{{.ID}}">профиль</a></article>{{end}}</div>
+{{template "footer" .}}{{end}}
+
+{{define "public_profile"}}{{template "header" .}}
+<section class="card profile-hero">
+  <img class="profile-avatar" src="{{fallback .Profile.AvatarURL "/static/img/placeholder.svg"}}" alt="avatar">
+  <div class="profile-meta"><h1>{{.Profile.FullName}}</h1><p>@{{.Profile.Username}} · {{.Profile.Role}} · SP: {{.Profile.SkillPoints}}</p><p>{{.Profile.Bio}}</p></div>
+</section>
+<section class="card" style="margin-top:14px"><h2>История</h2>{{range .History}}<p><a href="/events/{{.EventID}}">{{.Title}}</a> · {{fmtDate .EndDate "02.01.2006"}} · SP: {{.SPPoints}} · {{.Status}}</p>{{else}}<p class="text-muted">Нет участий.</p>{{end}}</section>
+{{template "footer" .}}{{end}}
+
+{{define "profile"}}{{template "header" .}}
+<h1>Профиль</h1>
+{{if .Error}}<div class="alert alert-error">{{.Error}}</div>{{end}}
+{{if .Success}}<div class="alert alert-success">{{.Success}}</div>{{end}}
+<section class="card profile-switcher" style="margin-bottom:14px;"><div class="action-row"><button class="btn btn-secondary" type="button" onclick="switchProfileSection('main')">Профиль</button><button class="btn btn-secondary" type="button" onclick="switchProfileSection('history')">История ивентов</button></div></section>
+<section id="profile-main-section">
+  <section class="card profile-hero">
+    <img class="profile-avatar" src="{{fallback .User.AvatarURL "/static/img/placeholder.svg"}}" alt="avatar">
+    <div class="profile-meta">
+      <h2>{{.User.FullName}}</h2><p class="text-muted">{{.User.Role}}</p>
+      <div class="profile-info-grid">
+        <div class="profile-info-item"><span class="text-muted">Ваш логин</span><b>@{{.User.Username}}</b></div>
+        <div class="profile-info-item"><span class="text-muted">Ваш Telegram</span><b>{{fallback .User.Telegram "Не указан"}}</b></div>
+        <div class="profile-info-item profile-info-wide"><span class="text-muted">Ваше описание о себе</span><p>{{fallback .User.Bio "Добавь немного о себе, чтобы тебя лучше знали в комьюнити."}}</p></div>
+      </div>
+    </div>
+    {{if .IsVolunteer}}<div class="card profile-points"><p class="text-muted">Мои<br>Skill Points</p><p class="metric-number">{{.Points}}</p></div>{{end}}
+  </section>
+  <section class="card" style="margin-top:14px"><h3>Безопасность</h3><button class="btn btn-secondary" type="button" onclick="openSecurityModal()">Открыть Настройки</button></section>
+</section>
+<section class="card" id="profile-history-section" style="margin-top:14px;display:none;"><h3>История ивентов</h3>{{range .History}}<ul class="history-list"><li><a class="history-link" href="/events/{{.EventID}}"><b>{{.Title}}</b></a><span class="text-muted"> · {{fmtDate .EndDate "02.01.2006"}} · SP: {{.SPPoints}}</span></li></ul>{{else}}<p class="text-muted">Пока нет завершённых мероприятий с вашим участием.</p>{{end}}</section>
+<div class="modal-backdrop" id="security-modal"><div class="modal-window"><aside class="modal-side"><a class="item active" href="javascript:void(0)" onclick="openTab('account', this)">Учётка</a><a class="item" href="javascript:void(0)" onclick="openTab('security', this)">Безопасность</a><a class="item" href="javascript:void(0)" onclick="openTab('personalization', this)">Персонализация профиля</a></aside><div class="modal-content"><button class="btn btn-secondary modal-close" onclick="closeSecurityModal()">Закрыть</button>
+  <div id="tab-account" class="tab-pane open"><h2>Учётка</h2><form method="post" action="/profile/account"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><label>Логин</label><input name="username" value="{{.User.Username}}"><label>Имя</label><input name="first_name" value="{{.User.FirstName}}"><label>Фамилия</label><input name="last_name" value="{{.User.LastName}}"><label>Telegram</label><input name="telegram" value="{{.User.Telegram}}" placeholder="@username"><button class="btn btn-secondary">Сохранить Учётку</button></form></div>
+  <div id="tab-security" class="tab-pane"><h2>Безопасность</h2>{{if .SecurityError}}<div class="alert alert-error">{{.SecurityError}}</div>{{end}}<form method="post" action="/profile/password"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><label>Текущий Пароль</label><input type="password" name="current_password" placeholder="••••••"><label>Новый Пароль</label><input type="password" name="new_password" placeholder="••••••"><label>Подтверждение Нового Пароля</label><input type="password" name="confirm_new_password" placeholder="••••••"><button class="btn btn-secondary">Обновить Пароль</button></form></div>
+  <div id="tab-personalization" class="tab-pane"><h2>Персонализация профиля</h2><form method="post" action="/profile" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><input type="hidden" name="avatar_cropped_data" id="avatar-cropped-data"><input class="file-input" type="file" name="avatar_file" accept="image/*" data-crop-kind="avatar" data-crop-hidden="#avatar-cropped-data" data-crop-preview="#avatar-preview"><img id="avatar-preview" class="upload-preview upload-preview-avatar" src="{{fallback .User.AvatarURL "/static/img/placeholder.svg"}}" alt="avatar preview"><textarea name="bio" placeholder="О себе">{{.User.Bio}}</textarea><button class="btn btn-primary">Обновить профиль</button></form></div>
+</div></div></div>
+<div class="modal-backdrop" id="avatar-crop-modal"><div class="card" style="max-width:720px;margin:6vh auto;"><h3>Обрезка аватарки</h3><canvas id="avatar-crop-canvas" width="480" height="480" style="width:100%;border-radius:12px;background:#111"></canvas><label>Масштаб</label><input id="crop-zoom" type="range" min="1" max="3" step="0.01" value="1"><label>Смещение по X</label><input id="crop-x" type="range" min="-1" max="1" step="0.01" value="0"><label>Смещение по Y</label><input id="crop-y" type="range" min="-1" max="1" step="0.01" value="0"><div class="action-row"><button type="button" class="btn btn-primary" onclick="applyAvatarCrop()">Окей</button><button type="button" class="btn btn-secondary" onclick="closeAvatarCropModal()">Оставить как есть</button></div></div></div>
+<script>
+function openSecurityModal(){document.getElementById('security-modal').classList.add('open')}
+function closeSecurityModal(){document.getElementById('security-modal').classList.remove('open')}
+function openTab(tab, el){document.querySelectorAll('.tab-pane').forEach(x=>x.classList.remove('open'));document.querySelectorAll('.modal-side .item').forEach(x=>x.classList.remove('active'));document.getElementById(`tab-${tab}`).classList.add('open');el.classList.add('active');}
+function switchProfileSection(section){document.getElementById('profile-main-section').style.display = section === 'main' ? 'block' : 'none';document.getElementById('profile-history-section').style.display = section === 'history' ? 'block' : 'none';}
+{{if .OpenSecurityModal}}openSecurityModal();const securityTabLink=document.querySelector('.modal-side .item[onclick*="security"]');if(securityTabLink){openTab('security', securityTabLink);}{{end}}
+</script>
+{{template "footer" .}}{{end}}
+
+{{define "leaderboard"}}{{template "header" .}}
+{{if not .IsVolunteer}}
+<section class="card merch-head"><h1>Мерч за Skill Points</h1><p class="text-muted">Вы являетесь лидером/организатором и не относитесь к волонтёрскому рейтингу SP.</p><p class="text-muted">Для этой роли мерч по SP недоступен.</p></section>
+{{else}}
+<section class="card merch-head"><h1>Мерч за Skill Points</h1><p class="text-muted">Копи SP и открывай новые призы</p><p class="merch-points">Твои SP: <b>{{.Points}}</b></p>{{if gt .NextLevel 0}}<p class="text-muted">До следующего мерча: {{sub .NextLevel .Points}} SP</p>{{else}}<p class="text-muted">Максимальный уровень мерча уже открыт 🎉</p>{{end}}<div class="merch-progress"><div class="merch-progress-fill" style="width: {{.ProgressPercent}}%"></div></div></section>
+<section class="grid merch-grid" style="margin-top:14px">{{range .MerchLevels}}<article class="card merch-item {{if ge $.Points .Need}}unlocked{{end}}"><p class="merch-need">{{.Need}} SP</p><h3>{{.Title}}</h3><p class="text-muted">{{if ge $.Points .Need}}Доступно{{else}}Ещё {{sub .Need $.Points}} SP{{end}}</p></article>{{end}}</section>
+{{end}}
+{{template "footer" .}}{{end}}
+
+{{define "rules"}}{{template "header" .}}
+<h1>Ваши возможности</h1>
+<section class="card" style="margin-bottom:14px"><h3>Усиление · 3+ баллов</h3><p class="text-muted">Поддержка конкретной задачи в моменте</p><ul><li>Проведение экскурсии по кампусу</li><li>Запуск студенческого клуба</li><li>Точечная помощь с медиаматериалами</li><li>Разовое волонтерство на мероприятии</li></ul></section>
+<section class="card" style="margin-bottom:14px"><h3>Вовлечение · 10+ баллов</h3><p class="text-muted">Регулярный вклад, ответственность за часть процесса</p><ul><li>Организация активности в рамках большого мероприятия</li><li>Повышение клубом своего уровня в системе развития</li><li>Длительное волонтерство на выездных событиях</li><li>Подготовка репортажей с мероприятий</li><li>Поддержка академического или спортивного трека</li><li>Выступление от имени ЦУ на внешних площадках</li></ul></section>
+<section class="card"><h3>Сотворчество · 20+ баллов</h3><p class="text-muted">Тяжелые, комплексные задачи, полноценное включение в развитие ЦУ</p><ul><li>Организация масштабного общеуниверситетского мероприятия</li><li>Ведение отдельного медиаканала университета</li><li>Помощь в онбординге студентов (роль бадди)</li><li>Разработка бота или инструмента, который оптимизирует процессы</li></ul></section>
+{{template "footer" .}}{{end}}

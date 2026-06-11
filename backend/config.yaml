@@ -1,0 +1,9 @@
+host: "localhost"
+port: 8080
+
+read_timeout: 5
+write_timeout: 10
+idle_timeout: 60
+shutdown_timeout: 10
+
+worker_interval: 2
