@@ -53,7 +53,7 @@ func (s *Service) RegisterUser(login, password, firstname, lastname, telegram st
 
 	token, tokenErr := auth.GenerateToken(user.ID)
 	if tokenErr != nil {
-		return "", fmt.Errorf("Ошибка генерации токена при аутентификации: %w", tokenErr)
+		return "", fmt.Errorf("ошибка генерации токена при аутентификации: %w", tokenErr)
 	}
 	return token, nil
 }

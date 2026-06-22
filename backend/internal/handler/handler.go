@@ -103,7 +103,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	token, err := h.svc.RegisterUser(req.Login, req.Password, req.FirstName, req.LastName, req.Telegram)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserExists) {
-			writeError(w, http.StatusConflict, "USER_EXISTS", "Пользователь с таким логином уже существует", err)
+			writeError(w, http.StatusConflict, "USER_EXISTS", "Логин не валиден", err)
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "REGISTRATION_FAILED", "Не удалось зарегистрировать пользователя", err)
