@@ -2,20 +2,24 @@ package middleware
 
 import (
 	"context"
-	"github.com/andruwka0/volunteer_platform/internal/auth"
-	"github.com/andruwka0/volunteer_platform/internal/domain"
-	"github.com/andruwka0/volunteer_platform/internal/handler"
-	"github.com/andruwka0/volunteer_platform/internal/store"
 	"log"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/andruwka0/volunteer_platform/internal/auth"
+	"github.com/andruwka0/volunteer_platform/internal/domain"
+	"github.com/andruwka0/volunteer_platform/internal/handler"
+	"github.com/andruwka0/volunteer_platform/internal/store"
 )
 
 func Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		token := strings.TrimSpace(authHeader)
+		if strings.HasPrefix(token, "Bearer ") {
+			token = strings.TrimSpace(token[7:])
+		}
 		if token == "" {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
@@ -68,7 +72,25 @@ func RequireAdmin(store *store.Store) func(http.Handler) http.Handler {
 			userID := r.Context().Value(handler.CtxKeyUserID).(int64)
 			user, err := store.GetUserByID(userID)
 			if err != nil || user.Role != domain.RoleAdmin {
+				http.Error(w, "forbidden: admin required", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func RequireOrganizer(store *store.Store) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userID := r.Context().Value(handler.CtxKeyUserID).(int64)
+			user, err := store.GetUserByID(userID)
+			if err != nil {
 				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+			if user.Role != domain.RoleOrganizer && user.Role != domain.RoleAdmin {
+				http.Error(w, "forbidden: organizer or admin required", http.StatusForbidden)
 				return
 			}
 			next.ServeHTTP(w, r)
