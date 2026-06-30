@@ -1,0 +1,256 @@
+/* ============================================================
+   Central University — global styles & design tokens
+   ============================================================ */
+
+:root {
+  /* Surfaces */
+  --cu-bg: #f4f5f7;
+  --cu-surface: #ffffff;
+  --cu-surface-2: #f8f9fb;
+  --cu-surface-3: #eef0f4;
+
+  /* Text */
+  --cu-text: #0f172a;
+  --cu-text-secondary: #5b6472;
+  --cu-text-muted: #939aa6;
+  --cu-text-on-dark: #ffffff;
+
+  /* Brand / accents */
+  --cu-accent: #2f6fed;          /* primary blue (links, active nav) */
+  --cu-accent-hover: #2560d4;
+  --cu-accent-soft: #e7eefe;     /* soft blue bg for active chips */
+  --cu-ink: #1e1f24;             /* near-black: filled pills, primary buttons */
+  --cu-ink-hover: #303138;
+  --cu-purple: #6c5ce7;          /* special CTA (Бонус за друга style) */
+  --cu-purple-soft: #efeafe;
+
+  /* Status colors */
+  --cu-success: #16a34a;
+  --cu-success-soft: #e3f6ea;
+  --cu-warning: #d97706;
+  --cu-warning-soft: #fdf0dd;
+  --cu-danger: #dc2626;
+  --cu-danger-soft: #fde7e7;
+  --cu-info: #2f6fed;
+  --cu-info-soft: #e7eefe;
+  --cu-neutral: #64748b;
+  --cu-neutral-soft: #eef0f4;
+
+  /* Borders */
+  --cu-border: #e6e8ee;
+  --cu-border-strong: #d4d8e0;
+
+  /* Radii */
+  --cu-radius-sm: 8px;
+  --cu-radius: 12px;
+  --cu-radius-lg: 16px;
+  --cu-radius-xl: 24px;
+  --cu-radius-pill: 999px;
+
+  /* Shadows */
+  --cu-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --cu-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+  --cu-shadow-lg: 0 12px 40px rgba(15, 23, 42, 0.12);
+
+  /* Spacing scale */
+  --cu-space-1: 4px;
+  --cu-space-2: 8px;
+  --cu-space-3: 12px;
+  --cu-space-4: 16px;
+  --cu-space-5: 24px;
+  --cu-space-6: 32px;
+  --cu-space-7: 48px;
+
+  /* Layout */
+  --cu-container: 1200px;
+  --cu-navbar-h: 64px;
+
+  --cu-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--cu-font);
+  background: var(--cu-bg);
+  color: var(--cu-text);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  color: var(--cu-text);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+a {
+  color: var(--cu-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--cu-accent-hover);
+}
+
+button {
+  font-family: inherit;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+.cu-container {
+  max-width: var(--cu-container);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* Page-level vertical rhythm */
+.cu-page {
+  padding: 32px 0 64px;
+}
+
+/* Visually-hidden helper for a11y */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--cu-accent);
+  outline-offset: 2px;
+}
+
+/* ============================================================
+   Form controls (utility classes — pair with reactive forms)
+   ============================================================ */
+.cu-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cu-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cu-text-secondary);
+}
+
+.cu-input,
+.cu-textarea,
+.cu-select {
+  width: 100%;
+  background: var(--cu-surface);
+  border: 1px solid var(--cu-border-strong);
+  border-radius: var(--cu-radius);
+  padding: 11px 14px;
+  font-size: 14px;
+  color: var(--cu-text);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.cu-input::placeholder,
+.cu-textarea::placeholder {
+  color: var(--cu-text-muted);
+}
+
+.cu-input:focus,
+.cu-textarea:focus,
+.cu-select:focus {
+  outline: none;
+  border-color: var(--cu-accent);
+  box-shadow: 0 0 0 3px var(--cu-accent-soft);
+}
+
+.cu-textarea {
+  resize: vertical;
+  min-height: 96px;
+}
+
+.cu-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235b6472' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 38px;
+  cursor: pointer;
+}
+
+.cu-input--invalid,
+.cu-textarea--invalid {
+  border-color: var(--cu-danger);
+}
+
+.cu-field__error {
+  font-size: 12px;
+  color: var(--cu-danger);
+}
+
+/* ============================================================
+   Small layout helpers
+   ============================================================ */
+.cu-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.cu-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cu-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cu-muted {
+  color: var(--cu-text-secondary);
+}
+
+.cu-alert {
+  border-radius: var(--cu-radius);
+  padding: 12px 16px;
+  font-size: 14px;
+}
+
+.cu-alert--error {
+  background: var(--cu-danger-soft);
+  color: var(--cu-danger);
+}
+
+.cu-alert--info {
+  background: var(--cu-info-soft);
+  color: var(--cu-info);
+}

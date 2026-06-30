@@ -1,47 +1,13 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head><meta charset="UTF-8"><title>Ивенты</title><link rel="stylesheet" href="/static/style.css"></head>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Frontend</title>
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+</head>
 <body>
-<nav class="top-nav">
-    <a href="/static/index.html">Ивенты</a>
-    <a href="/static/create.html">Создать</a>
-    <a href="/static/profile.html">Профиль</a>
-    <a href="/static/admin.html">Админка</a>
-    <button id="logout-btn" class="btn btn-secondary nav-logout">Выйти</button>
-</nav>
-<div class="container">
-    <h1>Мероприятия</h1>
-    <div id="events-list" class="grid"></div>
-</div>
-<script src="/static/api.js"></script>
-<script>
-    (async () => {
-        const user = await requireAuth(); if (!user) return;
-        /** @type {Event[]} */
-        const events = await api('/events');
-        const list = document.getElementById('events-list');
-        if (!events.length) { list.innerHTML = '<p class="text-muted">Пока нет мероприятий</p>'; return; }
-        events.forEach(ev => {
-            const cover = ev.CoverImageURL || '/static/placeholder.svg';
-            const statusClass = ev.Status === 'EVENT-RECRUITING' ? 'badge-success' : 'badge';
-            const statusText = ev.Status === 'EVENT-RECRUITING' ? 'Набор' : ev.Status === 'EVENT-ACTIVE' ? 'Активно' : ev.Status;
-            const card = document.createElement('div'); card.className = 'card event-row';
-            card.innerHTML = `
-      <div class="event-avatar" style="background:url('${cover}') center/cover" role="img" aria-label="Обложка"></div>
-      <div style="flex:1;">
-        <h3><a href="/static/event.html?id=${ev.ID}" class="event-title">${ev.Title}</a></h3>
-        <p class="text-muted">${ev.Description || ''}</p>
-        <div style="margin-top:10px;" class="text-muted">
-          📍 ${ev.Location || 'Локация не указана'} · 📅 ${ev.StartDate ? new Date(ev.StartDate).toLocaleDateString('ru') : 'Дата не указана'}
-        </div>
-        <div style="margin-top:10px;display:flex;gap:10px;align-items:center;">
-          <span class="badge ${statusClass}">${statusText}</span>
-          <span class="text-muted">SP: ${ev.SkillPoints}</span>
-        </div>
-      </div>`;
-            list.appendChild(card);
-        });
-    })();
-    document.getElementById('logout-btn').onclick = () => { localStorage.removeItem('token'); redirect('/static/login.html'); };
-</script>
-</body></html>
+  <app-root></app-root>
+</body>
+</html>
