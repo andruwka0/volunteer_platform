@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head><meta charset="UTF-8"><title>Админка</title><link rel="stylesheet" href="/static/style.css"></head>
+<body>
+<nav class="top-nav"><a href="/static/index.html">← Выход</a></nav>
+<div class="container">
+    <h1>Панель администратора</h1>
+    <div class="card"><h3>Ожидают подтверждения</h3><div id="pending-list"></div></div>
+    <div class="card" style="margin-top:20px;">
+        <h3>Управление ролями</h3>
+        <div class="form-row-2">
+            <label for="user-id" style="position:absolute;left:-9999px;">ID пользователя</label>
+            <input id="user-id" type="number" placeholder="ID пользователя">
+            <label for="role-select" style="position:absolute;left:-9999px;">Роль</label>
+            <select id="role-select">
+                <option value="Volunteer">Volunteer</option><option value="Organizer">Organizer</option><option value="Admin">Admin</option>
+            </select>
+        </div>
+        <button id="btn-promote" class="btn btn-primary" style="margin-top:10px;">Изменить роль</button>
+    </div>
+</div>
+<script src="/static/api.js"></script>
+<script>
+    (async () => {
+        /** @type {User} */
+        const u = await requireAuth();
+        if (!u || u.Role !== 'Admin') redirect('/static/index.html');
+        /** @type {Event[]} */
+        const events = await api('/events');
+        const pending = events.filter(e => e.Status === 'EVENT-FINISHED');
+        const list = document.getElementById('pending-list');
+        list.innerHTML = pending.length ? pending.map(ev => `
+    <div class="card" style="margin-bottom:10px;padding:14px;display:flex;justify-content:space-between;align-items:center;">
+      <div><b>${ev.Title}</b><p class="text-muted" style="margin:4px 0 0;">SP: ${ev.SkillPoints}</p></div>
+      <button class="btn btn-primary" onclick="approve(${ev.ID})">✅ Подтвердить</button>
+    </div>`).join('') : '<p class="text-muted">Нет ивентов для апрува</p>';
+    })();
+    async function approve(id) {
+        await api(`/admin/events/${id}/approve`, {method:'POST'});
+        alert('Баллы начислены!'); location.reload();
+    }
+    document.getElementById('btn-promote').onclick = async () => {
+        const uid = document.getElementById('user-id').value;
+        const role = document.getElementById('role-select').value;
+        if (!uid) return alert('Введите ID');
+        await api(`/admin/users/${uid}/promote`, {method:'POST', body:{role}});
+        alert('Роль изменена!');
+    };
+</script>
+</body></html>

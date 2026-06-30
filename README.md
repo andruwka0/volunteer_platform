@@ -1,201 +1,703 @@
-# Volunteer Rating Platform
+# Volunteer Platform API
 
-Закрытая платформа для волонтёрского сообщества, переписанная на Go. В приложении есть вход по заранее созданным аккаунтам, роли, мероприятия, заявки на участие, отзывы, уведомления, рейтинг SP и админка.
+Платформа для автоматизации волонтёрской деятельности университета.
 
-## Что нужно установить
+## 🏗 Архитектура
 
-- **Go 1.22 или новее**: <https://go.dev/dl/>
-- Git: <https://git-scm.com/downloads>
+```
+VolunteerPlatform/                    ← корень монорепо
+├── README.md                         ← общая документация
+├── .gitignore                        ← общий gitignore
+│
+├── backend/                          ← Go бэкенд
+│   ├── cmd/
+│   │   └── server/
+│   │       └── main.go               ← точка входа
+│   ├── internal/
+│   │   ├── auth/                     ← JWT токены
+│   │   ├── config/                   ← загрузка YAML конфига
+│   │   ├── domain/                   ← бизнес-модели (User, Event, Reward...)
+│   │   ├── dto/                      ← DTO для API ответов
+│   │   ├── handler/                  ← HTTP хэндлеры
+│   │   ├── middleware/               ← Auth, CORS, Logging
+│   │   ├── router/                   ← маршрутизация
+│   │   ├── service/                  ← бизнес-логика
+│   │   ├── store/                    ← хранилище (in-memory CRUD)
+│   │   └── worker/                   ← фоновые задачи (смена статусов)
+│   ├── app/
+│   │   └── static/
+│   │       └── images/               ← картинки для наград и ивентов
+│   │           ├── rewards/          ← hoodie.png, sticker_pack.png...
+│   │           └── events/           ← subbotnik.jpg, conference.jpg...
+│   ├── .env                          ← секреты (JWT_SECRET, ADMIN_LOGIN...)
+│   ├── config.yaml                   ← настройки сервера
+│   ├── go.mod
+│   └── go.sum
+│
+└── frontend/                         ← Angular фронтенд
+    ├── src/
+    │   ├── app/
+    │   │   ├── components/           ← компоненты UI
+    │   │   ├── services/             ← API-клиенты
+    │   │   ├── guards/               ← auth guards
+    │   │   ├── models/               ← TypeScript интерфейсы
+    │   │   └── app.component.ts
+    │   ├── assets/                   ← статика фронта (лого, иконки)
+    │   ├── environments/             ← dev/prod конфиги
+    │   ├── index.html
+    │   ├── main.ts
+    │   └── styles.css
+    ├── angular.json
+    ├── package.json
+    ├── tsconfig.json
+    └── README.md                     ← документация для фронта
 
-Проект сейчас не требует внешних Go-библиотек: всё собирается стандартной библиотекой Go.
+```
+## 🔐 Аутентификация
 
-## Быстрый запуск на Windows
+**JWT токены** в заголовке `Authorization` с префиксом `Bearer `:
 
-Инструкция рассчитана на обычный ноутбук с Windows 10/11 и PowerShell.
-
-1. Откройте **PowerShell**.
-2. Перейдите в папку, где хотите держать проект, например:
-
-   ```powershell
-   cd $HOME\Desktop
-   ```
-
-3. Склонируйте репозиторий и перейдите в него:
-
-   ```powershell
-   git clone <URL_ВАШЕГО_РЕПОЗИТОРИЯ> zashekastiki
-   cd zashekastiki
-   ```
-
-   Если проект уже скачан архивом, просто распакуйте его и выполните `cd` в папку проекта.
-
-4. Проверьте Go:
-
-   ```powershell
-   go version
-   ```
-
-   Если команда не найдена, установите Go с сайта выше, закройте PowerShell и откройте его заново.
-
-5. Создайте `.env` из примера:
-
-   ```powershell
-   Copy-Item .env.example .env
-   ```
-
-6. Создайте демо-данные:
-
-   ```powershell
-   go run .\cmd\seed
-   ```
-
-7. Запустите сервер:
-
-   ```powershell
-   go run .\cmd\server
-   ```
-
-8. Откройте в браузере:
-
-   ```text
-   http://127.0.0.1:8000/login
-   ```
-
-9. Демо-логины после `seed`:
-
-   | Роль | Логин | Пароль |
-   | --- | --- | --- |
-   | Лидер | `leader` | `Password123` |
-   | Организатор | `organizer` | `Password123` |
-   | Волонтёр | `volunteer` | `Password123` |
-
-Чтобы остановить сервер, вернитесь в PowerShell и нажмите `Ctrl+C`.
-
-## Запуск на macOS/Linux
-
-```bash
-cp .env.example .env
-make seed
-make run
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-Если `make` не установлен, используйте команды напрямую:
+Токен получается после `POST /auth/login` или `POST /auth/register` в поле `data.token`.
 
-```bash
-go run ./cmd/seed
-go run ./cmd/server
-```
+Срок жизни: 24 часа (настраивается в `.env` → `JWT_EXPIRATION_HOURS`).
 
-## Проверка, что сервер работает
+## 📦 Формат ответов
 
-Пока сервер запущен, откройте второй терминал и выполните:
-
-```powershell
-curl http://127.0.0.1:8000/health
-```
-
-Ожидаемый ответ:
-
+### Успех:
 ```json
-{"status":"ok"}
+{
+  "success": true,
+  "data": { ... }
+}
 ```
 
-## Полезные команды
-
-### Windows PowerShell
-
-```powershell
-go test ./...
-go run .\cmd\seed
-go run .\cmd\server
-go run .\cmd\make-admin -username leader -password Password123 -full-name "Главный"
-go run .\cmd\make-leader -username organizer
+### Ошибка:
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Человеческое описание"
+  }
+}
 ```
 
-### macOS/Linux или Git Bash
+## 👥 Роли
+
+| Роль | Что может |
+|------|-----------|
+| **Volunteer** | Регистрироваться на ивенты, покупать награды, смотреть свой профиль, историю ивентов и SP |
+| **Organizer** | + Создавать ивенты, подтверждать посещаемость СВОИХ ивентов, банить юзеров |
+| **Admin** | + Всё: управление ролями, начисление SP, подтверждение ивентов, создание наград и шаблонов, выдача мерча |
+
+## 🌐 API Endpoints
+
+### Публичные (без авторизации)
+
+#### Регистрация
+```http
+POST /auth/register
+Content-Type: application/json
+
+{
+  "login": "ivanov",
+  "password": "secure123",
+  "first_name": "Иван",
+  "last_name": "Иванов",
+  "middle_name": "Иванович",
+  "telegram": "@ivanov"
+}
+
+→ 201 Created
+{
+  "success": true,
+  "data": { "token": "eyJhbGc..." }
+}
+```
+
+#### Логин
+```http
+POST /auth/login
+Content-Type: application/json
+
+{
+  "login": "ivanov",
+  "password": "secure123"
+}
+
+→ 200 OK
+{
+  "success": true,
+  "data": { "token": "eyJhbGc..." }
+}
+```
+
+### Защищённые (нужен Auth — любой авторизованный юзер)
+
+#### Мой профиль
+```http
+GET /auth/me
+Authorization: Bearer <token>
+
+→ 200 OK
+{
+  "success": true,
+  "data": {
+    "id": 5,
+    "login": "ivanov",
+    "first_name": "Иван",
+    "last_name": "Иванов",
+    "middle_name": "Иванович",
+    "telegram": "@ivanov",
+    "role": "Volunteer",
+    "skill_points": 320
+  }
+}
+```
+
+#### Список ивентов
+```http
+GET /events
+Authorization: Bearer <token>
+
+→ 200 OK
+{
+  "success": true,
+  "data": {
+    "events": [
+      {
+        "id": 1,
+        "title": "Субботник",
+        "description": "...",
+        "location": "Парк",
+        "cover_image_url": "/static/images/events/subbotnik.jpg",
+        "status": "EVENT-RECRUITING",
+        "start_date": "2026-07-01T10:00:00Z",
+        "end_date": "2026-07-01T14:00:00Z",
+        "registration_deadline": "2026-06-30T23:59:00Z",
+        "max_participants": 50,
+        "reserve_participants": 10,
+        "skill_points": 50,
+        "created_by_id": 2,
+        "participants_count": 30,
+        "reserve_count": 5
+      }
+    ],
+    "count": 1
+  }
+}
+```
+
+**Статусы ивентов:**
+- `EVENT-RECRUITING` — идёт набор
+- `EVENT-ACTIVE` — ивент идёт
+- `EVENT-FINISHED` — ивент закончился, ждёт подтверждения админом
+- `EVENT-CLOSED` — баллы начислены
+- `EVENT-CANCELLED` — отменён
+
+⚠️ Забаненные юзеры **не видят** ивенты от конкретного организатора в этом списке.
+
+#### Детали ивента
+```http
+GET /events/{id}
+Authorization: Bearer <token>
+
+→ 200 OK
+```
+
+#### Регистрация на ивент
+```http
+POST /events/{id}/register
+Authorization: Bearer <token>
+
+→ 200 OK
+{
+  "success": true,
+  "data": { "message": "Вы успешно зарегистрированы на мероприятие" }
+}
+```
+
+⚠️ Если мест нет — юзер автоматически попадает в **резерв**.
+
+#### Отмена регистрации
+```http
+DELETE /events/{id}/register
+Authorization: Bearer <token>
+
+→ 200 OK
+```
+
+⚠️ Если юзер был в основном списке — первый из резерва автоматически повышается.
+
+#### Участники ивента
+```http
+GET /events/{id}/participants
+Authorization: Bearer <token>
+
+→ 200 OK
+{
+  "success": true,
+  "data": {
+    "event_id": 1,
+    "participants": [
+      {
+        "user_id": 5,
+        "first_name": "Иван",
+        "last_name": "Иванов",
+        "middle_name": "Иванович",
+        "telegram": "@ivanov",
+        "attendance_confirmed": true
+      }
+    ],
+    "count": 1
+  }
+}
+```
+
+#### Моя история ивентов
+```http
+GET /users/me/events
+Authorization: Bearer <token>
+
+→ 200 OK
+{
+  "success": true,
+  "data": {
+    "user_id": 5,
+    "events": [
+      {
+        "event_id": 1,
+        "title": "Субботник",
+        "status": "EVENT-CLOSED",
+        "joined_at": "2026-06-25T10:00:00Z",
+        "attendance_confirmed": true,
+        "skill_points": 50
+      }
+    ],
+    "count": 1
+  }
+}
+```
+
+#### История транзакций SP
+```http
+GET /users/{id}/skill-points/history
+Authorization: Bearer <token>
+
+→ 200 OK
+{
+  "success": true,
+  "data": {
+    "user_id": 5,
+    "transactions": [
+      {
+        "ID": 1,
+        "UserID": 5,
+        "Points": 50,
+        "Type": "event",
+        "Reason": "Участие в мероприятии: Субботник",
+        "EventID": 1,
+        "CreatedAt": "2026-07-01T15:00:00Z"
+      }
+    ],
+    "count": 1
+  }
+}
+```
+
+⚠️ **Важно:** юзер может смотреть только **свою** историю. Админ — любую.  
+⚠️ Поля возвращаются в **CamelCase** (как в Go), т.к. `SkillPointTransaction` сериализуется напрямую без DTO.
+
+**Типы транзакций:**
+- `manual` — ручное начисление админом
+- `event` — автоматическое за ивент
+- `reward` — списание за награду
+
+### Создание ивента (Organizer / Admin)
+
+```http
+POST /events
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "title": "Субботник",
+  "description": "Уборка парка",
+  "location": "Парк",
+  "image": "/static/images/events/subbotnik.jpg",
+  "start_date": "2026-07-01T10:00:00Z",
+  "end_date": "2026-07-01T14:00:00Z",
+  "registration_deadline": "2026-06-30T23:59:00Z",
+  "max_participants": 50,
+  "reserve_participants": 10,
+  "skill_points": 50,
+  "template_id": 1
+}
+
+→ 201 Created
+```
+
+⚠️ **Требует роль Organizer или Admin.** Обычный Volunteer получит `403 FORBIDDEN`.  
+💡 `template_id` — опционально, ссылка на шаблон.
+
+### Каталог наград (Battle Pass)
+
+#### Все награды (каталог)
+```http
+GET /admin/rewards
+Authorization: Bearer <token>
+
+→ 200 OK
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "name": "Худи",
+      "description": "Лимитированная коллекция",
+      "cost": 500,
+      "image_url": "/static/images/rewards/hoodie.png"
+    }
+  ]
+}
+```
+
+#### Мои награды (с флагами доступности)
+```http
+GET /users/me/rewards
+Authorization: Bearer <token>
+
+→ 200 OK
+{
+  "success": true,
+  "data": {
+    "user_id": 5,
+    "rewards": [
+      {
+        "reward_id": 1,
+        "name": "Худи",
+        "description": "Лимитированная коллекция",
+        "cost": 500,
+        "image_url": "/static/images/rewards/hoodie.png",
+        "available": true,
+        "claimed": false,
+        "picked_up": false
+      }
+    ]
+  }
+}
+```
+
+**Флаги:**
+- `available` — хватает SP для покупки (`skill_points >= cost`)
+- `claimed` — уже куплено
+- `picked_up` — уже получено физически
+
+#### Купить награду
+```http
+POST /users/me/rewards/{id}/claim
+Authorization: Bearer <token>
+
+→ 200 OK
+{
+  "success": true,
+  "data": { "message": "Награда забронирована" }
+}
+```
+
+⚠️ При покупке SP **списываются**!
+
+#### Доступные картинки
+```http
+GET /assets/images
+Authorization: Bearer <token>
+
+→ 200 OK
+{
+  "success": true,
+  "data": {
+    "images": [
+      "/static/images/rewards/hoodie.png",
+      "/static/images/events/subbotnik.jpg"
+    ],
+    "count": 2
+  }
+}
+```
+
+### Оргские роуты (Organizer / Admin)
+
+#### Подтвердить посещаемость участника
+```http
+POST /organizer/events/{event_id}/users/{user_id}/confirm
+Authorization: Bearer <token>
+
+→ 200 OK
+{
+  "success": true,
+  "data": { "message": "Посещаемость подтверждена" }
+}
+```
+
+⚠️ Только **создатель ивента** может подтверждать!
+
+#### Забанить юзера
+```http
+POST /organizer/blacklist
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "user_id": 5 }
+
+→ 200 OK
+```
+
+Забаненный юзер **не видит** ивенты этого орга в списке.
+
+#### Разбанить
+```http
+DELETE /organizer/blacklist/{user_id}
+Authorization: Bearer <token>
+
+→ 200 OK
+```
+
+### Админские роуты (только Admin)
+
+#### Поиск юзеров
+```http
+GET /admin/users?first_name=Иван&last_name=Иванов
+Authorization: Bearer <token>
+
+→ 200 OK
+{
+  "success": true,
+  "data": {
+    "users": [
+      {
+        "id": 5,
+        "login": "ivanov",
+        "first_name": "Иван",
+        "last_name": "Иванов",
+        "middle_name": "Иванович",
+        "telegram": "@ivanov",
+        "role": "Volunteer",
+        "skill_points": 320
+      }
+    ],
+    "count": 1
+  }
+}
+```
+
+#### 🎁 Купленные награды юзера (для выдачи мерча)
+```http
+GET /admin/users/{id}/rewards
+Authorization: Bearer <token>
+
+→ 200 OK
+{
+  "success": true,
+  "data": {
+    "user_id": 5,
+    "rewards": [
+      {
+        "reward_id": 1,
+        "name": "Худи",
+        "description": "Лимитированная коллекция",
+        "cost": 500,
+        "image_url": "/static/images/rewards/hoodie.png",
+        "available": true,
+        "claimed": true,
+        "picked_up": false
+      }
+    ]
+  }
+}
+```
+
+💡 Возвращает **только купленные** награды. Фронт фильтрует `picked_up: false` для списка "к выдаче".
+
+#### Отметить награду как выданную
+```http
+POST /admin/users/{user_id}/rewards/{reward_id}/pickup
+Authorization: Bearer <token>
+
+→ 200 OK
+```
+
+#### Повысить роль
+```http
+POST /admin/users/{id}/promote
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "role": "Organizer" }
+
+→ 200 OK
+```
+
+Возможные роли: `Organizer`, `Admin`.
+
+#### Начислить SP вручную
+```http
+POST /admin/users/{id}/award
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "points": 100,
+  "reason": "Организация конференции"
+}
+
+→ 200 OK
+```
+
+#### Подтвердить ивент и начислить SP участникам
+```http
+POST /admin/events/{id}/approve
+Authorization: Bearer <token>
+
+→ 200 OK
+```
+
+⚠️ Работает только для ивентов в статусе `EVENT-FINISHED`. SP начисляются только тем, у кого `attendance_confirmed: true`.
+
+#### Создать награду
+```http
+POST /admin/rewards
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "name": "Худи",
+  "description": "Лимитированная коллекция",
+  "cost": 500,
+  "image_url": "/static/images/rewards/hoodie.png"
+}
+
+→ 201 Created
+```
+
+⚠️ `image_url` должен быть из списка `GET /assets/images`.
+
+### Оргские роуты (Organizer / Admin)
+
+#### Создать шаблон ивента
+```http
+POST /organizer/event-templates
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "title": "Субботник",
+  "description": "Уборка парка",
+  "location": "Парк",
+  "image_url": "/static/images/events/subbotnik.jpg",
+  "duration_minutes": 240,
+  "max_participants": 50,
+  "reserve_participants": 10,
+  "skill_points": 50
+}
+
+→ 201 Created
+```
+
+#### Список шаблонов
+```http
+GET /organizer/event-templates
+Authorization: Bearer <token>
+
+→ 200 OK
+```
+
+## 🎨 UI-флоу для фронта
+
+### Юзер (Volunteer):
+1. **Логин** → главная страница со списком ивентов
+2. **Клик на ивент** → детали + кнопка "Зарегистрироваться"
+3. **Профиль** → история ивентов, баланс SP, каталог наград
+4. **Battle Pass** → список наград с кнопкой "Купить" (если `available: true`)
+5. **После покупки** → награда в "Мои награды" со статусом "Ожидает выдачи"
+
+### Организатор:
+1. Всё что юзер + **создание ивентов**
+2. **После ивента** → список участников + кнопка "Подтвердить" у каждого
+3. **Чёрный список** → добавление/удаление юзеров
+
+### Админ:
+1. Всё что орг
+2. **Поиск юзеров** → карточка с 3 кнопками:
+   - 🔼 Повысить роль
+   - 💰 Начислить SP
+   - 🎁 Выдать мерч (показывает купленные награды с `picked_up: false`)
+3. **Подтверждение ивентов** → массовое начисление SP
+4. **Управление наградами и шаблонами**
+
+## 🚀 Запуск
 
 ```bash
-make test
-make seed
-make run
-make make-admin USERNAME=leader PASSWORD=Password123 FULL_NAME="Главный"
-make make-leader USERNAME=organizer
+cd backend
+
+# Создай .env из шаблона
+cp .env.example .env
+# Отредактируй ADMIN_LOGIN, ADMIN_PASSWORD, JWT_SECRET
+
+# Установи зависимости
+go mod tidy
+
+# Запусти
+go run cmd/server/main.go
 ```
 
-## Где лежат данные
+Сервер на `http://localhost:8080`.
 
-По умолчанию данные сохраняются в файл:
+## 🔧 Переменные окружения (backend/.env)
 
-```text
-volunteer_platform.json
-```
+| Переменная | Описание | По умолчанию |
+|------------|----------|--------------|
+| `ADMIN_LOGIN` | Логин админа (создаётся при старте) | — |
+| `ADMIN_PASSWORD` | Пароль админа | — |
+| `JWT_SECRET` | Секрет для подписи JWT (мин. 32 символа) | `default-dev-secret-...` |
+| `JWT_EXPIRATION_HOURS` | Срок жизни токена в часах | `24` |
 
-Файл создаётся автоматически после `go run ./cmd/seed` или после первых изменений в приложении. Для чистого запуска можно остановить сервер, удалить `volunteer_platform.json` и снова выполнить seed.
+## 📋 Коды ошибок
 
-## Переменные окружения
+| Код | HTTP | Описание |
+|-----|------|----------|
+| `INVALID_JSON` | 400 | Неверный JSON |
+| `MISSING_FIELDS` | 400 | Обязательные поля отсутствуют |
+| `USER_EXISTS` | 409 | Логин уже занят |
+| `INVALID_CREDENTIALS` | 401 | Неверный логин/пароль |
+| `UNAUTHORIZED` | 401 | Нет токена |
+| `FORBIDDEN` | 403 | Недостаточно прав |
+| `EVENT_NOT_FOUND` | 404 | Ивент не найден |
+| `USER_NOT_FOUND` | 404 | Юзер не найден |
+| `REGISTRATION_CLOSED` | 400 | Регистрация закрыта |
+| `INSUFFICIENT_POINTS` | 400 | Не хватает SP |
+| `ALREADY_CLAIMED` | 400 | Награда уже получена |
+| `NOT_CREATOR` | 403 | Только создатель ивента может подтверждать |
+| `ALREADY_CONFIRMED` | 400 | Посещаемость уже подтверждена |
+| `EVENT_NOT_FINISHED` | 400 | Ивент ещё не закончился |
+| `ORGANIZER_SELF_REG` | 400 | Организатор не может регаться на свои ивенты |
 
-Файл `.env.example` содержит рабочие значения по умолчанию:
+## ⚠️ Важные замечания для фронтендера
 
-```env
-APP_NAME=Volunteer Rating Platform
-DATABASE_URL=./volunteer_platform.json
-SECRET_KEY=change-me-in-production
-SESSION_COOKIE_NAME=volunteer_session
-ADDR=:8000
-```
+1. **Токен с `Bearer `** — `Authorization: Bearer <token>` (стандарт HTTP)
+2. **Создание ивентов** — `POST /events` требует роль **Organizer** или **Admin** (Volunteer получит 403)
+3. **Шаблоны** —  для **Admin** или **Organizer** (`/organizer/event-templates`)
+4. **CamelCase в истории SP** — `/users/{id}/skill-points/history` возвращает поля в CamelCase (как в Go), остальные эндпоинты — в snake_case
+5. **Автоматическая смена статусов** — воркер меняет статусы ивентов по датам (RECRUITING → ACTIVE → FINISHED)
+6. **Резерв** — если мест нет, юзер автоматически попадает в резерв; при отмене — первый из резерва повышается
 
-- `APP_NAME` — название приложения.
-- `DATABASE_URL` — путь к JSON-файлу хранилища. Старый вид `sqlite:///./volunteer_platform.db` тоже принимается и автоматически преобразуется в JSON-файл рядом с проектом.
-- `SECRET_KEY` — ключ для cookie-сессий; для реального деплоя обязательно поменяйте.
-- `SESSION_COOKIE_NAME` — имя cookie сессии.
-- `ADDR` — адрес HTTP-сервера. Для локального запуска обычно достаточно `:8000`.
+## 📸 Картинки
 
-## Частые проблемы на Windows
+Картинки лежат в `backend/app/static/images/`:
+- `rewards/` — картинки наград
+- `events/` — картинки ивентов
 
-### `go` не является внутренней или внешней командой
-
-Go не установлен или PowerShell открыт до установки Go. Установите Go, закройте PowerShell и откройте новый.
-
-### Порт 8000 уже занят
-
-Измените порт в `.env`, например:
-
-```env
-ADDR=:8080
-```
-
-После этого запускайте сервер и открывайте `http://127.0.0.1:8080/login`.
-
-### Браузер не открывает страницу
-
-Проверьте, что в окне PowerShell есть строка вроде:
-
-```text
-listening :8000
-```
-
-Если её нет — сервер не запущен или завершился с ошибкой. Скопируйте текст ошибки из PowerShell.
-
-## Структура проекта
-
-Структура приведена к Gopherledger-style: `cmd` содержит только точки входа, а код приложения разделён на конфигурацию, домен, репозиторий, сервисы, HTTP handlers, router, middleware, templates и upload.
-
-- `cmd/server` — минимальная точка входа веб-сервера: загружает config, открывает JSON repository, создаёт services/handlers/router, запускает HTTP server и корректно завершает его по `Ctrl+C`/SIGTERM.
-- `cmd/seed` — CLI для демо-данных; использует `internal/config`, `internal/repository`, `internal/service`, `internal/domain`.
-- `cmd/make-admin` — CLI для создания/обновления leader-пользователя.
-- `cmd/make-leader` — CLI для назначения существующего пользователя лидером.
-- `internal/config` — загрузка `.env` и переменных окружения (`APP_NAME`, `DATABASE_URL`, `SECRET_KEY`, `SESSION_COOKIE_NAME`, `ADDR`, пути templates/static/upload).
-- `internal/domain` — чистые структуры предметной области, разнесённые по файлам: `user.go`, `event.go`, `review.go`, `rule.go`, `participant.go`, `notification.go`.
-- `internal/repository` — JSON-backed CRUD/storage: `repository.go` с интерфейсами, `json_store.go` с `JSONStore`, отдельные файлы для пользователей, мероприятий, отзывов, правил и уведомлений.
-- `internal/service` — бизнес-логика без `net/http` и шаблонов: пользователи, пароли, обложки мероприятий, экспорт и дальнейшие бизнес-операции.
-- `internal/auth` — password/session/CSRF primitives.
-- `internal/handler` — HTTP parsing, redirects, flashes, template rendering и handlers, разнесённые по файлам (`handler.go`, `events.go`, `profile.go`, `admin.go`).
-- `internal/router` — сборка HTTP router из handlers.
-- `internal/middleware` — security headers, logging, recover и место для reusable auth middleware.
-- `internal/templates` — загрузка Go `html/template`; сами шаблоны остаются в `app/templates`.
-- `internal/upload` — сохранение multipart/data URL файлов в `app/static/uploads`.
-- `internal/platform` — маленький compatibility layer для старых тестов/CLI API; новая разработка должна использовать пакеты выше напрямую.
-- `app/templates` — HTML-шаблоны Go.
-- `app/static` — CSS, JS, изображения и загруженные файлы.
-
-Правило для дальнейшей разработки: новые сущности сначала описываются в `internal/domain`, CRUD добавляется в `internal/repository`, бизнес-операции — в `internal/service`, затем HTTP-форма/страница подключается в `internal/handler` и маршрут — в `internal/router`.
+При старте бэкенд автоматически сканирует эту папку и делает картинки доступными через `GET /assets/images`.

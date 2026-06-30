@@ -4,6 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+
 	"github.com/andruwka0/volunteer_platform/internal/config"
 	"github.com/andruwka0/volunteer_platform/internal/domain"
 	"github.com/andruwka0/volunteer_platform/internal/handler"
@@ -12,14 +18,10 @@ import (
 	"github.com/andruwka0/volunteer_platform/internal/store"
 	"github.com/andruwka0/volunteer_platform/internal/worker"
 	"github.com/joho/godotenv"
-	"log"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
 )
 
 func main() {
+	// Загружаем .env
 	err := godotenv.Load()
 	if err != nil {
 		err = godotenv.Load("../.env")
@@ -29,27 +31,37 @@ func main() {
 	} else {
 		log.Println("Файл .env успешно загружен")
 	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("Не удалось загрузить конфиг: %v", err)
 	}
+
 	str := store.New()
 
+	// Инициализация админа из ENV
 	adminLogin := os.Getenv("ADMIN_LOGIN")
 	adminPass := os.Getenv("ADMIN_PASSWORD")
 
 	if adminLogin != "" && adminPass != "" {
-		_, err := str.CreateUser(adminLogin, service.HashPassword(adminPass), "Admin", "User", "")
+		adminHash, err := service.HashPassword(adminPass)
+		if err != nil {
+			log.Fatalf("Ошибка хэширования пароля админа: %v", err)
+		}
+		_, err = str.CreateUser(adminLogin, adminHash, "Admin", "User", "Root", "")
 		if err == nil {
-			err := str.UpdateUserRole(1, domain.RoleAdmin)
-			if err != nil {
-				return
+			if err := str.UpdateUserRole(1, domain.RoleAdmin); err != nil {
+				log.Fatalf("Не удалось назначить роль админа: %v", err)
 			}
 			log.Println("Администратор инициализирован из ENV")
+		} else if !errors.Is(err, domain.ErrUserExists) {
+			log.Printf("Ошибка создания админа: %v", err)
 		}
 	}
+
 	svc := service.New(str)
 
+	// Запуск воркера проверки статусов ивентов
 	ctx, cancel := context.WithCancel(context.Background())
 	go worker.StartEventStatusChecker(ctx, str, cfg.WorkerInterval)
 
@@ -65,6 +77,7 @@ func main() {
 		IdleTimeout:  cfg.IdleTimeout,
 	}
 
+	// Graceful shutdown
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
@@ -78,6 +91,7 @@ func main() {
 	<-stop
 	log.Println("Получен сигнал остановки, начинаем graceful shutdown")
 	cancel()
+
 	shutdownCtx, shutdownCancel := context.WithTimeout(
 		context.Background(),
 		cfg.ShutdownTimeout,

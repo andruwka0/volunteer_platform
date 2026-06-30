@@ -1,37 +1,68 @@
 package auth
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
-	"sync"
+	"os"
+	"strconv"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 var ErrInvalidToken = errors.New("недействительный токен")
 
-var (
-	mu     sync.RWMutex
-	tokens = make(map[string]int64)
-)
-
-func GenerateToken(userID int64) (string, error) {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	token := hex.EncodeToString(b)
-	mu.Lock()
-	defer mu.Unlock()
-	tokens[token] = userID
-	return token, nil
+type Claims struct {
+	UserID int64 `json:"user_id"`
+	jwt.RegisteredClaims
 }
 
-func ValidateToken(token string) (int64, error) {
-	mu.Lock()
-	defer mu.Unlock()
-	userID, ok := tokens[token]
-	if !ok {
+func getJWTSecret() []byte {
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		secret = "default-dev-secret-change-me-in-production-32chars!!"
+	}
+	return []byte(secret)
+}
+
+func getExpirationHours() int {
+	hoursStr := os.Getenv("JWT_EXPIRATION_HOURS")
+	if hoursStr == "" {
+		return 24
+	}
+	hours, err := strconv.Atoi(hoursStr)
+	if err != nil {
+		return 24
+	}
+	return hours
+}
+
+func GenerateToken(userID int64) (string, error) {
+	expirationHours := getExpirationHours()
+	claims := &Claims{
+		UserID: userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(expirationHours) * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Issuer:    "volunteer_platform",
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(getJWTSecret())
+}
+
+func ValidateToken(tokenString string) (int64, error) {
+	claims := &Claims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, ErrInvalidToken
+		}
+		return getJWTSecret(), nil
+	})
+
+	if err != nil || !token.Valid {
 		return 0, ErrInvalidToken
 	}
-	return userID, nil
+
+	return claims.UserID, nil
 }

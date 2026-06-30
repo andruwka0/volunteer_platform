@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head><meta charset="UTF-8"><title>Регистрация</title><link rel="stylesheet" href="/static/style.css"></head>
+<body>
+<div class="container">
+    <div class="card" style="max-width:500px;margin:80px auto;">
+        <h1>Регистрация</h1>
+        <form id="register-form">
+            <div class="form-row-2">
+                <label for="fn-input" style="position:absolute;left:-9999px;">Имя</label>
+                <input id="fn-input" type="text" name="first_name" placeholder="Имя" required>
+                <label for="ln-input" style="position:absolute;left:-9999px;">Фамилия</label>
+                <input id="ln-input" type="text" name="last_name" placeholder="Фамилия" required>
+            </div>
+            <label for="login-input" style="position:absolute;left:-9999px;">Логин</label>
+            <input id="login-input" type="text" name="login" placeholder="Логин" required>
+            <label for="password-input" style="position:absolute;left:-9999px;">Пароль</label>
+            <input id="password-input" type="password" name="password" placeholder="Пароль" required>
+            <label for="tg-input" style="position:absolute;left:-9999px;">Telegram</label>
+            <input id="tg-input" type="text" name="telegram" placeholder="Telegram">
+            <button type="submit" class="btn btn-primary" style="width:100%;margin-top:10px;">Зарегистрироваться</button>
+        </form>
+        <p class="text-muted" style="margin-top:16px;text-align:center;">Есть аккаунт? <a href="/static/login.html" style="color:var(--accent-light);">Войти</a></p>
+    </div>
+</div>
+<script src="/static/api.js"></script>
+<script>
+    document.getElementById('register-form').addEventListener('submit', async e => {
+        e.preventDefault();
+        const form = e.target, btn = form.querySelector('button');
+        btn.textContent = 'Регистрируем...'; btn.disabled = true;
+        try {
+            /** @type {TokenResponse} */
+            const res = await api('/auth/register', {
+                method:'POST',
+                body:{
+                    login:form.login.value,
+                    password:form.password.value,
+                    first_name:form.first_name.value,
+                    last_name:form.last_name.value,
+                    telegram:form.telegram.value
+                }
+            });
+            if (!res.token) {
+                showFormError('register-form', 'Токен не получен');
+                btn.textContent = 'Зарегистрироваться';
+                btn.disabled = false;
+                return;
+            }
+            localStorage.setItem('token', res.token);
+            redirect('/static/index.html');
+        } catch(err) {
+            showFormError('register-form', err.message);
+            btn.textContent='Зарегистрироваться';
+            btn.disabled=false;
+        }
+    });
+</script>
+</body></html>

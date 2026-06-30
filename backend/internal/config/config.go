@@ -9,18 +9,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// rawConfig — для парсинга YAML (числа)
 type rawConfig struct {
 	Host            string `yaml:"host"`
 	Port            int    `yaml:"port"`
-	ReadTimeout     int    `yaml:"read_timeout"`     // секунды
-	WriteTimeout    int    `yaml:"write_timeout"`    // секунды
-	IdleTimeout     int    `yaml:"idle_timeout"`     // секунды
-	ShutdownTimeout int    `yaml:"shutdown_timeout"` // секунды
-	WorkerInterval  int    `yaml:"worker_interval"`  // минуты
+	ReadTimeout     int    `yaml:"read_timeout"`
+	WriteTimeout    int    `yaml:"write_timeout"`
+	IdleTimeout     int    `yaml:"idle_timeout"`
+	ShutdownTimeout int    `yaml:"shutdown_timeout"`
+	WorkerInterval  int    `yaml:"worker_interval"`
 }
 
-// Config — итоговая структура (с Duration)
 type Config struct {
 	Host            string
 	Port            int
@@ -45,7 +43,6 @@ func Load() (*Config, error) {
 	configPaths := []string{
 		"config.yaml",
 		"backend/config.yaml",
-		"../config.yaml",
 	}
 
 	if envPath := os.Getenv("CONFIG_PATH"); envPath != "" {
