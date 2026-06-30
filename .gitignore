@@ -4,3 +4,5 @@ volunteer_platform.db
 *.db
 /bin/
 .idea
+.DS_Store
+**/.DS_Store
