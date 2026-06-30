@@ -53,15 +53,15 @@ VolunteerPlatform/                    ← корень монорепо
     └── README.md                     ← документация для фронта
 
 ```
-
 ## 🔐 Аутентификация
 
-**JWT токены** в заголовке `Authorization`:
+**JWT токены** в заголовке `Authorization` с префиксом `Bearer `:
+
 ```
-Authorization: <token>
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-Токен получается после `POST /auth/login` или `POST /auth/register`.
+Токен получается после `POST /auth/login` или `POST /auth/register` в поле `data.token`.
 
 Срок жизни: 24 часа (настраивается в `.env` → `JWT_EXPIRATION_HOURS`).
 
@@ -90,9 +90,9 @@ Authorization: <token>
 
 | Роль | Что может |
 |------|-----------|
-| **Volunteer** | Регистрироваться на ивенты, покупать награды, смотреть свой профиль |
+| **Volunteer** | Регистрироваться на ивенты, покупать награды, смотреть свой профиль, историю ивентов и SP |
 | **Organizer** | + Создавать ивенты, подтверждать посещаемость СВОИХ ивентов, банить юзеров |
-| **Admin** | + Всё: управление ролями, начисление SP, подтверждение ивентов, создание наград/шаблонов |
+| **Admin** | + Всё: управление ролями, начисление SP, подтверждение ивентов, создание наград и шаблонов, выдача мерча |
 
 ## 🌐 API Endpoints
 
@@ -136,12 +136,12 @@ Content-Type: application/json
 }
 ```
 
-### Защищённые (нужен Auth)
+### Защищённые (нужен Auth — любой авторизованный юзер)
 
 #### Мой профиль
 ```http
 GET /auth/me
-Authorization: <token>
+Authorization: Bearer <token>
 
 → 200 OK
 {
@@ -162,7 +162,7 @@ Authorization: <token>
 #### Список ивентов
 ```http
 GET /events
-Authorization: <token>
+Authorization: Bearer <token>
 
 → 200 OK
 {
@@ -199,10 +199,20 @@ Authorization: <token>
 - `EVENT-CLOSED` — баллы начислены
 - `EVENT-CANCELLED` — отменён
 
+⚠️ Забаненные юзеры **не видят** ивенты от конкретного организатора в этом списке.
+
+#### Детали ивента
+```http
+GET /events/{id}
+Authorization: Bearer <token>
+
+→ 200 OK
+```
+
 #### Регистрация на ивент
 ```http
 POST /events/{id}/register
-Authorization: <token>
+Authorization: Bearer <token>
 
 → 200 OK
 {
@@ -211,18 +221,22 @@ Authorization: <token>
 }
 ```
 
+⚠️ Если мест нет — юзер автоматически попадает в **резерв**.
+
 #### Отмена регистрации
 ```http
 DELETE /events/{id}/register
-Authorization: <token>
+Authorization: Bearer <token>
 
 → 200 OK
 ```
 
+⚠️ Если юзер был в основном списке — первый из резерва автоматически повышается.
+
 #### Участники ивента
 ```http
 GET /events/{id}/participants
-Authorization: <token>
+Authorization: Bearer <token>
 
 → 200 OK
 {
@@ -247,7 +261,7 @@ Authorization: <token>
 #### Моя история ивентов
 ```http
 GET /users/me/events
-Authorization: <token>
+Authorization: Bearer <token>
 
 → 200 OK
 {
@@ -272,7 +286,7 @@ Authorization: <token>
 #### История транзакций SP
 ```http
 GET /users/{id}/skill-points/history
-Authorization: <token>
+Authorization: Bearer <token>
 
 → 200 OK
 {
@@ -281,40 +295,61 @@ Authorization: <token>
     "user_id": 5,
     "transactions": [
       {
-        "id": 1,
-        "user_id": 5,
-        "points": 50,
-        "type": "event",
-        "reason": "Участие в мероприятии: Субботник",
-        "event_id": 1,
-        "created_at": "2026-07-01T15:00:00Z"
-      },
-      {
-        "id": 2,
-        "user_id": 5,
-        "points": -500,
-        "type": "reward",
-        "reason": "Получение награды: Худи",
-        "event_id": null,
-        "created_at": "2026-07-02T10:00:00Z"
+        "ID": 1,
+        "UserID": 5,
+        "Points": 50,
+        "Type": "event",
+        "Reason": "Участие в мероприятии: Субботник",
+        "EventID": 1,
+        "CreatedAt": "2026-07-01T15:00:00Z"
       }
     ],
-    "count": 2
+    "count": 1
   }
 }
 ```
+
+⚠️ **Важно:** юзер может смотреть только **свою** историю. Админ — любую.  
+⚠️ Поля возвращаются в **CamelCase** (как в Go), т.к. `SkillPointTransaction` сериализуется напрямую без DTO.
 
 **Типы транзакций:**
 - `manual` — ручное начисление админом
 - `event` — автоматическое за ивент
 - `reward` — списание за награду
 
+### Создание ивента (Organizer / Admin)
+
+```http
+POST /events
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "title": "Субботник",
+  "description": "Уборка парка",
+  "location": "Парк",
+  "image": "/static/images/events/subbotnik.jpg",
+  "start_date": "2026-07-01T10:00:00Z",
+  "end_date": "2026-07-01T14:00:00Z",
+  "registration_deadline": "2026-06-30T23:59:00Z",
+  "max_participants": 50,
+  "reserve_participants": 10,
+  "skill_points": 50,
+  "template_id": 1
+}
+
+→ 201 Created
+```
+
+⚠️ **Требует роль Organizer или Admin.** Обычный Volunteer получит `403 FORBIDDEN`.  
+💡 `template_id` — опционально, ссылка на шаблон.
+
 ### Каталог наград (Battle Pass)
 
 #### Все награды (каталог)
 ```http
 GET /admin/rewards
-Authorization: <token>
+Authorization: Bearer <token>
 
 → 200 OK
 {
@@ -334,7 +369,7 @@ Authorization: <token>
 #### Мои награды (с флагами доступности)
 ```http
 GET /users/me/rewards
-Authorization: <token>
+Authorization: Bearer <token>
 
 → 200 OK
 {
@@ -365,7 +400,7 @@ Authorization: <token>
 #### Купить награду
 ```http
 POST /users/me/rewards/{id}/claim
-Authorization: <token>
+Authorization: Bearer <token>
 
 → 200 OK
 {
@@ -379,7 +414,7 @@ Authorization: <token>
 #### Доступные картинки
 ```http
 GET /assets/images
-Authorization: <token>
+Authorization: Bearer <token>
 
 → 200 OK
 {
@@ -399,17 +434,21 @@ Authorization: <token>
 #### Подтвердить посещаемость участника
 ```http
 POST /organizer/events/{event_id}/users/{user_id}/confirm
-Authorization: <token>
+Authorization: Bearer <token>
 
 → 200 OK
+{
+  "success": true,
+  "data": { "message": "Посещаемость подтверждена" }
+}
 ```
 
-⚠️ Только создатель ивента может подтверждать!
+⚠️ Только **создатель ивента** может подтверждать!
 
 #### Забанить юзера
 ```http
 POST /organizer/blacklist
-Authorization: <token>
+Authorization: Bearer <token>
 Content-Type: application/json
 
 { "user_id": 5 }
@@ -422,7 +461,7 @@ Content-Type: application/json
 #### Разбанить
 ```http
 DELETE /organizer/blacklist/{user_id}
-Authorization: <token>
+Authorization: Bearer <token>
 
 → 200 OK
 ```
@@ -432,7 +471,7 @@ Authorization: <token>
 #### Поиск юзеров
 ```http
 GET /admin/users?first_name=Иван&last_name=Иванов
-Authorization: <token>
+Authorization: Bearer <token>
 
 → 200 OK
 {
@@ -458,7 +497,7 @@ Authorization: <token>
 #### 🎁 Купленные награды юзера (для выдачи мерча)
 ```http
 GET /admin/users/{id}/rewards
-Authorization: <token>
+Authorization: Bearer <token>
 
 → 200 OK
 {
@@ -469,8 +508,10 @@ Authorization: <token>
       {
         "reward_id": 1,
         "name": "Худи",
+        "description": "Лимитированная коллекция",
         "cost": 500,
         "image_url": "/static/images/rewards/hoodie.png",
+        "available": true,
         "claimed": true,
         "picked_up": false
       }
@@ -484,7 +525,7 @@ Authorization: <token>
 #### Отметить награду как выданную
 ```http
 POST /admin/users/{user_id}/rewards/{reward_id}/pickup
-Authorization: <token>
+Authorization: Bearer <token>
 
 → 200 OK
 ```
@@ -492,7 +533,7 @@ Authorization: <token>
 #### Повысить роль
 ```http
 POST /admin/users/{id}/promote
-Authorization: <token>
+Authorization: Bearer <token>
 Content-Type: application/json
 
 { "role": "Organizer" }
@@ -505,7 +546,7 @@ Content-Type: application/json
 #### Начислить SP вручную
 ```http
 POST /admin/users/{id}/award
-Authorization: <token>
+Authorization: Bearer <token>
 Content-Type: application/json
 
 {
@@ -519,7 +560,7 @@ Content-Type: application/json
 #### Подтвердить ивент и начислить SP участникам
 ```http
 POST /admin/events/{id}/approve
-Authorization: <token>
+Authorization: Bearer <token>
 
 → 200 OK
 ```
@@ -529,7 +570,7 @@ Authorization: <token>
 #### Создать награду
 ```http
 POST /admin/rewards
-Authorization: <token>
+Authorization: Bearer <token>
 Content-Type: application/json
 
 {
@@ -544,10 +585,12 @@ Content-Type: application/json
 
 ⚠️ `image_url` должен быть из списка `GET /assets/images`.
 
+### Оргские роуты (Organizer / Admin)
+
 #### Создать шаблон ивента
 ```http
-POST /admin/event-templates
-Authorization: <token>
+POST /organizer/event-templates
+Authorization: Bearer <token>
 Content-Type: application/json
 
 {
@@ -566,67 +609,61 @@ Content-Type: application/json
 
 #### Список шаблонов
 ```http
-GET /admin/event-templates
-Authorization: <token>
+GET /organizer/event-templates
+Authorization: Bearer <token>
 
 → 200 OK
-```
-
-#### Создать ивент (Org/Admin)
-```http
-POST /events
-Authorization: <token>
-Content-Type: application/json
-
-{
-  "title": "Субботник",
-  "description": "...",
-  "location": "Парк",
-  "image": "/static/images/events/subbotnik.jpg",
-  "start_date": "2026-07-01T10:00:00Z",
-  "end_date": "2026-07-01T14:00:00Z",
-  "registration_deadline": "2026-06-30T23:59:00Z",
-  "max_participants": 50,
-  "reserve_participants": 10,
-  "skill_points": 50,
-  "template_id": 1
-}
-
-→ 201 Created
 ```
 
 ## 🎨 UI-флоу для фронта
 
 ### Юзер (Volunteer):
-1. Логин → главная страница со списком ивентов
-2. Клик на ивент → детали + кнопка "Зарегистрироваться"
-3. Профиль → история ивентов, баланс SP, каталог наград
-4. Battle Pass → список наград с кнопкой "Купить" (если `available: true`)
-5. После покупки → награда в "Мои награды" со статусом "Ожидает выдачи"
+1. **Логин** → главная страница со списком ивентов
+2. **Клик на ивент** → детали + кнопка "Зарегистрироваться"
+3. **Профиль** → история ивентов, баланс SP, каталог наград
+4. **Battle Pass** → список наград с кнопкой "Купить" (если `available: true`)
+5. **После покупки** → награда в "Мои награды" со статусом "Ожидает выдачи"
 
 ### Организатор:
-1. Всё что юзер + создание ивентов
-2. После ивента → список участников + кнопка "Подтвердить" у каждого
-3. Чёрный список → добавление/удаление юзеров
+1. Всё что юзер + **создание ивентов**
+2. **После ивента** → список участников + кнопка "Подтвердить" у каждого
+3. **Чёрный список** → добавление/удаление юзеров
 
 ### Админ:
 1. Всё что орг
-2. Поиск юзеров → карточка с 3 кнопками:
+2. **Поиск юзеров** → карточка с 3 кнопками:
    - 🔼 Повысить роль
    - 💰 Начислить SP
    - 🎁 Выдать мерч (показывает купленные награды с `picked_up: false`)
-3. Подтверждение ивентов → массовое начисление SP
-4. Управление наградами и шаблонами
+3. **Подтверждение ивентов** → массовое начисление SP
+4. **Управление наградами и шаблонами**
 
 ## 🚀 Запуск
 
 ```bash
 cd backend
+
+# Создай .env из шаблона
+cp .env.example .env
+# Отредактируй ADMIN_LOGIN, ADMIN_PASSWORD, JWT_SECRET
+
+# Установи зависимости
 go mod tidy
+
+# Запусти
 go run cmd/server/main.go
 ```
 
 Сервер на `http://localhost:8080`.
+
+## 🔧 Переменные окружения (backend/.env)
+
+| Переменная | Описание | По умолчанию |
+|------------|----------|--------------|
+| `ADMIN_LOGIN` | Логин админа (создаётся при старте) | — |
+| `ADMIN_PASSWORD` | Пароль админа | — |
+| `JWT_SECRET` | Секрет для подписи JWT (мин. 32 символа) | `default-dev-secret-...` |
+| `JWT_EXPIRATION_HOURS` | Срок жизни токена в часах | `24` |
 
 ## 📋 Коды ошибок
 
@@ -643,3 +680,24 @@ go run cmd/server/main.go
 | `REGISTRATION_CLOSED` | 400 | Регистрация закрыта |
 | `INSUFFICIENT_POINTS` | 400 | Не хватает SP |
 | `ALREADY_CLAIMED` | 400 | Награда уже получена |
+| `NOT_CREATOR` | 403 | Только создатель ивента может подтверждать |
+| `ALREADY_CONFIRMED` | 400 | Посещаемость уже подтверждена |
+| `EVENT_NOT_FINISHED` | 400 | Ивент ещё не закончился |
+| `ORGANIZER_SELF_REG` | 400 | Организатор не может регаться на свои ивенты |
+
+## ⚠️ Важные замечания для фронтендера
+
+1. **Токен с `Bearer `** — `Authorization: Bearer <token>` (стандарт HTTP)
+2. **Создание ивентов** — `POST /events` требует роль **Organizer** или **Admin** (Volunteer получит 403)
+3. **Шаблоны** —  для **Admin** или **Organizer** (`/organizer/event-templates`)
+4. **CamelCase в истории SP** — `/users/{id}/skill-points/history` возвращает поля в CamelCase (как в Go), остальные эндпоинты — в snake_case
+5. **Автоматическая смена статусов** — воркер меняет статусы ивентов по датам (RECRUITING → ACTIVE → FINISHED)
+6. **Резерв** — если мест нет, юзер автоматически попадает в резерв; при отмене — первый из резерва повышается
+
+## 📸 Картинки
+
+Картинки лежат в `backend/app/static/images/`:
+- `rewards/` — картинки наград
+- `events/` — картинки ивентов
+
+При старте бэкенд автоматически сканирует эту папку и делает картинки доступными через `GET /assets/images`.
